@@ -6,4 +6,6 @@
  * `@intentius/chant/reconcile` — it is not vendored here.
  */
 
-export {} from "@intentius/chant/reconcile";
+// Forgejo REST client
+export { createClient, ForgejoApiError } from "./auth/client.js";
+export type { ForgejoClient, ForgejoClientOptions } from "./auth/client.js";
