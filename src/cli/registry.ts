@@ -6,5 +6,8 @@
  */
 
 import type { Cycle } from "../reconcile/runner.js";
+import { orgSettingsCycle } from "../cycles/org-settings.js";
 
-export const CYCLE_REGISTRY: Record<string, Cycle> = {};
+export const CYCLE_REGISTRY: Record<string, Cycle> = {
+  [orgSettingsCycle.name]: orgSettingsCycle,
+};
