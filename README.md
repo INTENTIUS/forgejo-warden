@@ -5,6 +5,16 @@
 
 Keep your Forgejo org and repos in a declared state — reconcile, guardrails, drift correction.
 
+## Install
+
+```bash
+# Dry-run against your instance — reads only, prints a plan, changes nothing.
+npx @intentius/forgejo-warden reconcile --config governance.yml --base-url https://forgejo.example.com --token-env FORGEJO_TOKEN --mode dry-run
+```
+
+Installs the `forgejo-warden` CLI. Point `--base-url` at your instance — works
+against [Codeberg](https://codeberg.org) too. Config + flags below.
+
 A sibling of [github-warden](https://github.com/INTENTIUS/github-warden), built on
 the shared provider-agnostic reconcile primitive in
 [`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant) (change-set
