@@ -6,12 +6,21 @@
 import { describe, it, expect } from "vitest";
 import { diffCollection, runReconcile, removalDeltaCap } from "@intentius/chant/reconcile";
 import type { ChangeSet } from "@intentius/chant/reconcile";
+import { GOVERNANCE_VERBS, isGovernanceVerb } from "@intentius/chant/governance";
+import { CYCLE_REGISTRY } from "./cli/registry.js";
 
 describe("chant/reconcile is wired up", () => {
   it("exposes the harness primitives", () => {
     expect(typeof diffCollection).toBe("function");
     expect(typeof runReconcile).toBe("function");
     expect(typeof removalDeltaCap).toBe("function");
+  });
+
+  it("every registered cycle stamps a governance verb from the shared vocabulary", () => {
+    expect(GOVERNANCE_VERBS.length).toBeGreaterThan(0);
+    for (const [name, cycle] of Object.entries(CYCLE_REGISTRY)) {
+      expect(isGovernanceVerb(cycle.verb), `cycle "${name}" must stamp a governance verb`).toBe(true);
+    }
   });
 
   it("diffCollection produces a create entry", () => {

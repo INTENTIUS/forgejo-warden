@@ -10,6 +10,10 @@
  * loss (a `previously` alias collapses a delete+create into an update). The
  * member-floor / self-lockout guardrails are GitHub-flavored and omitted; add a
  * Forgejo equivalent later only if meaningful.
+ *
+ * Every warden cycle stamps a cross-provider governance verb
+ * (`@intentius/chant/governance`); the shared runner copies it onto change-set
+ * entries so Forgejo plans group by the same grammar as other providers'.
  */
 
 import {
@@ -31,6 +35,8 @@ export type {
   DeferredWork,
   ReconcileResult,
 } from "@intentius/chant/reconcile";
+export { GOVERNANCE_VERBS, isGovernanceVerb } from "@intentius/chant/governance";
+export type { GovernanceVerb } from "@intentius/chant/governance";
 
 /** A Forgejo governance cycle — the shared `Cycle` specialized to warden's types. */
 export type Cycle<TScope = unknown> = CoreCycle<ForgejoClient, OrgConfig, LiveOrgState, TScope>;
