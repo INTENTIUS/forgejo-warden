@@ -12,7 +12,9 @@ forgejo-warden reconcile \
   --mode dry-run
 ```
 
-`forgejo-warden --help` (or no arguments) prints usage.
+`forgejo-warden --help` (or no arguments, or `--help` after a subcommand)
+prints usage; `forgejo-warden --version` prints the version (inlined from
+package.json at build time).
 
 ## Flags
 
