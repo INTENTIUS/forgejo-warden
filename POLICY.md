@@ -245,7 +245,7 @@ new team; on an existing team they reconcile as separate child entries.
 | `units` | list of string | optional | enabled units, e.g. `repo.code`, `repo.issues`, `repo.pulls` |
 | `members` | list of `{username}` | optional | team members (presence) |
 | `repos` | list of `{name}` | optional | org repos the team has access to (presence) |
-| `previously` | string | optional | former team name; a rename is resolved into an update instead of a delete + create (`resolveRenames` guardrail step) |
+| `previously` | string | optional | former team name; when the old name has a pending delete (an org that owns `team`), the plan collapses the rename into a single update that keeps the team id and its memberships |
 
 ### `repos{}` scalar fields + `topics` (`repo-settings` cycle)
 

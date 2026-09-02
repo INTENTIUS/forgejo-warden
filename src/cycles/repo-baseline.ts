@@ -21,7 +21,7 @@ import { charge, paginate } from "./_shared.js";
 
 export type RepoBaselineScope = Record<string, never>;
 
-interface GhRepo {
+interface ForgejoRepo {
   name?: string;
 }
 
@@ -35,7 +35,7 @@ export const repoBaselineCycle: Cycle<RepoBaselineScope> = {
     _scope: RepoBaselineScope,
     budget: RateBudget,
   ): Promise<LiveOrgState> {
-    const raws = await paginate<GhRepo>(client, `/orgs/${scopeId}/repos`, budget);
+    const raws = await paginate<ForgejoRepo>(client, `/orgs/${scopeId}/repos`, budget);
     const repos: Record<string, LiveRepo> = {};
     for (const r of raws) {
       if (r.name) repos[r.name] = {};
@@ -67,6 +67,9 @@ export const repoBaselineCycle: Cycle<RepoBaselineScope> = {
         owner: scopeId,
         name: baseline.name,
         private: isPrivate,
+        // Without this Forgejo generates a contentless repo — the point of a
+        // template baseline is to carry the template's files.
+        git_content: true,
       });
       return;
     }

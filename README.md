@@ -28,7 +28,7 @@ rendered ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) ·
 - A Forgejo API token ([SETUP.md](SETUP.md) has the click-path and scopes; a
   dry-run needs only read). Any self-hosted Forgejo works, and so does
   [Codeberg](https://codeberg.org); point `--base-url` at the instance.
-- Node 22+.
+- Node 20+.
 
 About ten minutes to a first dry-run plan. To probe before cloning anything:
 
@@ -82,8 +82,12 @@ cap so a typo can't mass-delete ([POLICY.md](POLICY.md), "Delete semantics").
 `npm test` runs the unit suite (mock-client, fully offline). The
 [e2e suite](https://github.com/INTENTIUS/forgejo-warden/tree/main/e2e) is
 **fully hermetic**: it stands up a throwaway Forgejo via Docker Compose and
-mints an admin token, then provisions its own org and exercises every cycle
-before tearing down. No external account or secrets are needed:
+mints an admin token, then provisions its own org and runs every cycle's read
+path against it (fetchLive, buildDesired, diff, asserted read-only), so live
+API-contract drift gets caught. The opt-in apply phase performs one real write
+(an org-settings update, verified by re-fetch); the other cycles' apply paths
+are covered by the offline unit suite, not end-to-end. No external account or
+secrets are needed:
 
 ```sh
 eval "$(npm run --silent e2e:up)"   # compose up + mint token

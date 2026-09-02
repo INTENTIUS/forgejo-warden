@@ -22,7 +22,7 @@ import { charge, paginate } from "./_shared.js";
 
 export type MembershipScope = Record<string, never>;
 
-interface GhUser {
+interface ForgejoUser {
   login?: string;
   username?: string;
 }
@@ -37,7 +37,7 @@ export const membershipCycle: Cycle<MembershipScope> = {
     _scope: MembershipScope,
     budget: RateBudget,
   ): Promise<LiveOrgState> {
-    const users = await paginate<GhUser>(client, `/orgs/${scopeId}/members`, budget);
+    const users = await paginate<ForgejoUser>(client, `/orgs/${scopeId}/members`, budget);
     const members = users
       .map((u) => u.login ?? u.username)
       .filter((u): u is string => typeof u === "string" && u.length > 0)

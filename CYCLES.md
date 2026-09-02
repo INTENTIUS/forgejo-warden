@@ -63,15 +63,17 @@ A team create is `POST /orgs/{org}/teams` followed by inline
 `PUT /teams/{id}/members/{username}` and `PUT /teams/{id}/repos/{org}/{repo}`
 for the declared members and repos; the diff emits no separate child entries
 for a not-yet-live team. A team update is `PATCH /teams/{id}` with the declared
-fields, and a team delete is `DELETE /teams/{id}`. Child entries add or remove
-with `PUT`/`DELETE /teams/{id}/members/{username}` and
+fields plus the team name (Forgejo's edit-team API requires `name`, which also
+carries a rename), and a team delete is `DELETE /teams/{id}`. Child entries add
+or remove with `PUT`/`DELETE /teams/{id}/members/{username}` and
 `PUT`/`DELETE /teams/{id}/repos/{org}/{repo}`.
 
 Teams are keyed by name (the config keys the `teams:` map by name); child
 entries are keyed `{team}/{username}` and `{team}/{repo}`. Forgejo addresses
-teams by numeric id, so the apply path reads the id off the live snapshot or
-resolves the name to an id via `GET /orgs/{org}/teams/{name}` for child
-entries. A team entry with `previously: <old-name>` matching a pending delete
+teams by numeric id, so the apply path reads the id off the live snapshot; for
+child entries — which only know the team name — it resolves name to id via
+`GET /orgs/{org}/teams/search` and an exact match on the result (Forgejo has no
+by-name team endpoint). A team entry with `previously: <old-name>` matching a pending delete
 collapses into an update (a rename) instead of a delete plus a create, and the
 team id and its memberships survive. For the team itself the diff compares
 `description` and `permission` along with `canCreateOrgRepo`,
@@ -118,7 +120,8 @@ The repo-baseline cycle provisions repos: it ensures the named repos exist in
 the org, and it only ever creates. Reads are `GET /orgs/{org}/repos` for names
 only, an existence check. For a baseline whose repo is missing,
 `template: owner/repo` turns the apply into `POST /repos/{owner}/{repo}/generate`
-(generate from the template into the org); otherwise the apply is
+(generate from the template into the org, with `git_content` enabled so the
+template's files come along); otherwise the apply is
 `POST /orgs/{org}/repos` for an empty repo, and `private` defaults to `true`
 for the new repo. The change-set key is the baseline's repo name. The diff emits a `create`
 only when the repo is absent and nothing else, so existing repos stay untouched

@@ -61,7 +61,7 @@ describe("teamsCycle.apply — team create embeds children", () => {
 });
 
 describe("teamsCycle.apply — update/delete use the live id", () => {
-  it("PATCHes /teams/{id} on update", async () => {
+  it("PATCHes /teams/{id} on update, always sending the name (EditTeamOption requires it)", async () => {
     const client = makeClient();
     await teamsCycle.apply(
       client,
@@ -70,7 +70,7 @@ describe("teamsCycle.apply — update/delete use the live id", () => {
       scope,
       makeBudget(),
     );
-    expect(client.calls[0]).toMatchObject({ method: "PATCH", path: "/teams/7", body: { permission: "admin" } });
+    expect(client.calls[0]).toMatchObject({ method: "PATCH", path: "/teams/7", body: { name: "devs", permission: "admin" } });
   });
   it("DELETEs /teams/{id} on delete", async () => {
     const client = makeClient();
@@ -86,8 +86,11 @@ describe("teamsCycle.apply — update/delete use the live id", () => {
 });
 
 describe("teamsCycle.apply — subresources resolve name → id", () => {
-  it("team-member add resolves the team id first", async () => {
-    const client = makeClient({ "GET /orgs/acme/teams/devs": { id: 9 } });
+  // Forgejo has no by-name team endpoint; resolution goes through teams/search
+  // with an exact-name match on the result.
+  const SEARCH = "GET /orgs/acme/teams/search?q=devs&limit=50";
+  it("team-member add resolves the team id via search first", async () => {
+    const client = makeClient({ [SEARCH]: { ok: true, data: [{ id: 9, name: "devs" }] } });
     await teamsCycle.apply(
       client,
       { kind: "create", resourceType: "team-member", key: "devs/carol", after: { username: "carol" } },
@@ -96,12 +99,12 @@ describe("teamsCycle.apply — subresources resolve name → id", () => {
       makeBudget(),
     );
     expect(client.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
-      "GET /orgs/acme/teams/devs",
+      "GET /orgs/acme/teams/search?q=devs&limit=50",
       "PUT /teams/9/members/carol",
     ]);
   });
   it("team-repo remove resolves id then DELETEs", async () => {
-    const client = makeClient({ "GET /orgs/acme/teams/devs": { id: 9 } });
+    const client = makeClient({ [SEARCH]: { ok: true, data: [{ id: 9, name: "devs" }] } });
     await teamsCycle.apply(
       client,
       { kind: "delete", resourceType: "team-repo", key: "devs/api", before: { name: "api" } },
@@ -110,6 +113,45 @@ describe("teamsCycle.apply — subresources resolve name → id", () => {
       makeBudget(),
     );
     expect(client.calls[1]).toMatchObject({ method: "DELETE", path: "/teams/9/repos/acme/api" });
+  });
+  it("search results are exact-matched on name (substring hits don't win)", async () => {
+    const client = makeClient({
+      [SEARCH]: { ok: true, data: [{ id: 8, name: "devs-ops" }, { id: 9, name: "Devs" }] },
+    });
+    await teamsCycle.apply(
+      client,
+      { kind: "create", resourceType: "team-member", key: "devs/carol", after: { username: "carol" } },
+      "acme",
+      scope,
+      makeBudget(),
+    );
+    expect(client.calls[1]).toMatchObject({ method: "PUT", path: "/teams/9/members/carol" });
+  });
+});
+
+describe("teamsCycle — `previously:` rename", () => {
+  it("collapses delete + create into one PATCH that renames, keeping the live id", async () => {
+    const config: GovernanceConfig = {
+      orgs: {
+        acme: {
+          owned: true,
+          teams: { platform: { permission: "write", previously: "platform-eng" } },
+        },
+      },
+    };
+    const client = makeClient({
+      "GET /orgs/acme/teams?limit=50&page=1": [{ id: 7, name: "platform-eng", permission: "write" }],
+      "GET /teams/7/members?limit=50&page=1": [],
+      "GET /teams/7/repos?limit=50&page=1": [],
+    });
+    const result = await runReconcile({ config, client, cycles: [teamsCycle], mode: "apply" });
+    const cr = result.cycles[0]!;
+    expect(cr.counts).toMatchObject({ create: 0, delete: 0, update: 1 });
+    expect(cr.guardrailBlocked).toBe(false);
+    expect(cr.failed).toEqual([]);
+    const patch = client.calls.find((c) => c.method === "PATCH");
+    expect(patch).toMatchObject({ path: "/teams/7", body: { name: "platform" } });
+    expect(client.calls.some((c) => c.method === "DELETE" || c.method === "POST")).toBe(false);
   });
 });
 

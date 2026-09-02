@@ -22,7 +22,7 @@ import { charge, paginate } from "./_shared.js";
 
 export type WebhooksScope = Record<string, never>;
 
-interface GhHook {
+interface ForgejoHook {
   id?: number;
   type?: string;
   active?: boolean;
@@ -30,11 +30,11 @@ interface GhHook {
   branch_filter?: string;
   config?: { url?: string; content_type?: string };
 }
-interface GhRepo {
+interface ForgejoRepo {
   name?: string;
 }
 
-function mapHook(raw: GhHook): LiveWebhook | null {
+function mapHook(raw: ForgejoHook): LiveWebhook | null {
   const url = raw.config?.url;
   if (!url) return null;
   const hook: LiveWebhook = { url };
@@ -54,7 +54,7 @@ async function fetchHooks(
   path: string,
   budget: RateBudget,
 ): Promise<LiveWebhook[]> {
-  const raws = await paginate<GhHook>(client, path, budget);
+  const raws = await paginate<ForgejoHook>(client, path, budget);
   return raws.map(mapHook).filter((h): h is LiveWebhook => h !== null);
 }
 
@@ -81,7 +81,7 @@ export const webhooksCycle: Cycle<WebhooksScope> = {
     budget: RateBudget,
   ): Promise<LiveOrgState> {
     const webhooks = await fetchHooks(client, `/orgs/${scopeId}/hooks`, budget);
-    const orgRepos = await paginate<GhRepo>(client, `/orgs/${scopeId}/repos`, budget);
+    const orgRepos = await paginate<ForgejoRepo>(client, `/orgs/${scopeId}/repos`, budget);
     const repos: Record<string, LiveRepo> = {};
     for (const r of orgRepos) {
       if (!r.name) continue;

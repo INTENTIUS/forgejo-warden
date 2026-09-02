@@ -26,24 +26,24 @@ import { charge, paginate } from "./_shared.js";
 
 export type SecretsVariablesScope = Record<string, never>;
 
-interface GhSecret {
+interface ForgejoSecret {
   name?: string;
 }
-interface GhVariable {
+interface ForgejoVariable {
   name?: string;
   data?: string;
   value?: string;
 }
-interface GhRepo {
+interface ForgejoRepo {
   name?: string;
 }
 
-function mapSecrets(raws: GhSecret[]): LiveSecret[] {
+function mapSecrets(raws: ForgejoSecret[]): LiveSecret[] {
   return raws.filter((s): s is { name: string } => typeof s.name === "string").map((s) => ({ name: s.name }));
 }
-function mapVariables(raws: GhVariable[]): LiveVariable[] {
+function mapVariables(raws: ForgejoVariable[]): LiveVariable[] {
   return raws
-    .filter((v): v is GhVariable & { name: string } => typeof v.name === "string")
+    .filter((v): v is ForgejoVariable & { name: string } => typeof v.name === "string")
     .map((v) => ({ name: v.name, value: v.data ?? v.value }));
 }
 
@@ -57,15 +57,15 @@ export const secretsVariablesCycle: Cycle<SecretsVariablesScope> = {
     _scope: SecretsVariablesScope,
     budget: RateBudget,
   ): Promise<LiveOrgState> {
-    const secrets = mapSecrets(await paginate<GhSecret>(client, `/orgs/${scopeId}/actions/secrets`, budget));
-    const variables = mapVariables(await paginate<GhVariable>(client, `/orgs/${scopeId}/actions/variables`, budget));
+    const secrets = mapSecrets(await paginate<ForgejoSecret>(client, `/orgs/${scopeId}/actions/secrets`, budget));
+    const variables = mapVariables(await paginate<ForgejoVariable>(client, `/orgs/${scopeId}/actions/variables`, budget));
 
-    const orgRepos = await paginate<GhRepo>(client, `/orgs/${scopeId}/repos`, budget);
+    const orgRepos = await paginate<ForgejoRepo>(client, `/orgs/${scopeId}/repos`, budget);
     const repos: Record<string, LiveRepo> = {};
     for (const r of orgRepos) {
       if (!r.name) continue;
-      const rs = mapSecrets(await paginate<GhSecret>(client, `/repos/${scopeId}/${r.name}/actions/secrets`, budget));
-      const rv = mapVariables(await paginate<GhVariable>(client, `/repos/${scopeId}/${r.name}/actions/variables`, budget));
+      const rs = mapSecrets(await paginate<ForgejoSecret>(client, `/repos/${scopeId}/${r.name}/actions/secrets`, budget));
+      const rv = mapVariables(await paginate<ForgejoVariable>(client, `/repos/${scopeId}/${r.name}/actions/variables`, budget));
       repos[r.name] = { secrets: rs, variables: rv };
     }
     return { secrets, variables, repos };

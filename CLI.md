@@ -75,7 +75,8 @@ For each cycle and org, the run prints:
 In `apply` mode each block is followed by `Applied: N, Failed: N` and a `FAILED`
 line per entry that errored (the run continues past individual failures). A
 tripped guardrail prints `GUARDRAIL BLOCK: <reason>` and skips that cycle's
-apply. Cycles that errored during fetch print `ERROR in <cycle> @ <org>` on
+apply. Cycles that errored while fetching live state or building desired state
+print `ERROR in <cycle> @ <org>` on
 stderr, and cycles skipped because the request budget ran out print
 `DEFERRED (budget): ...` (the budget defaults to 1000 API requests per run and
 is not currently exposed as a flag).

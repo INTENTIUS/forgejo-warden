@@ -7,7 +7,8 @@
  *   - team create/update/delete read the id off the change entry's live `before`
  *     (or the POST response for a fresh team).
  *   - team-member / team-repo entries only know the team *name* (from the key),
- *     so apply resolves name → id via `GET /orgs/{org}/teams/{name}`.
+ *     so apply resolves name → id via `GET /orgs/{org}/teams/search` (Forgejo
+ *     has no by-name team endpoint; the search result is exact-matched on name).
  *
  * On create, members/repos are embedded in the team entry (the diff emits no
  * separate child entries for a not-yet-live team), so apply adds them inline
@@ -23,7 +24,7 @@ import { charge, paginate } from "./_shared.js";
 
 export type TeamsScope = Record<string, never>;
 
-interface GhTeam {
+interface ForgejoTeam {
   id?: number;
   name?: string;
   description?: string;
@@ -32,17 +33,17 @@ interface GhTeam {
   includes_all_repositories?: boolean;
   units?: string[];
 }
-interface GhUser {
+interface ForgejoUser {
   login?: string;
   username?: string;
 }
-interface GhRepo {
+interface ForgejoRepo {
   name?: string;
 }
 
 const TEAM_PERMS = new Set(["read", "write", "admin", "owner"]);
 
-function mapTeam(raw: GhTeam): LiveTeam {
+function mapTeam(raw: ForgejoTeam): LiveTeam {
   const t: LiveTeam = {};
   if (typeof raw.id === "number") t.id = raw.id;
   if (raw.description != null) t.description = raw.description;
@@ -81,9 +82,14 @@ async function resolveTeamId(
   budget: RateBudget,
 ): Promise<number> {
   charge(budget);
-  const team = await client.request<GhTeam>("GET", `/orgs/${org}/teams/${name}`);
-  if (typeof team.id !== "number") throw new Error(`team '${name}' has no id`);
-  return team.id;
+  // Forgejo/Gitea have no `GET /orgs/{org}/teams/{name}`; search and exact-match.
+  const res = await client.request<{ data?: ForgejoTeam[] }>(
+    "GET",
+    `/orgs/${org}/teams/search?q=${encodeURIComponent(name)}&limit=50`,
+  );
+  const match = (res.data ?? []).find((t) => t.name?.toLowerCase() === name.toLowerCase());
+  if (!match || typeof match.id !== "number") throw new Error(`team '${name}' not found in org '${org}'`);
+  return match.id;
 }
 
 export const teamsCycle: Cycle<TeamsScope> = {
@@ -96,17 +102,17 @@ export const teamsCycle: Cycle<TeamsScope> = {
     _scope: TeamsScope,
     budget: RateBudget,
   ): Promise<LiveOrgState> {
-    const raws = await paginate<GhTeam>(client, `/orgs/${scopeId}/teams`, budget);
+    const raws = await paginate<ForgejoTeam>(client, `/orgs/${scopeId}/teams`, budget);
     const teams: Record<string, LiveTeam> = {};
     for (const raw of raws) {
       if (!raw.name || typeof raw.id !== "number") continue;
       const t = mapTeam(raw);
-      const members = await paginate<GhUser>(client, `/teams/${raw.id}/members`, budget);
+      const members = await paginate<ForgejoUser>(client, `/teams/${raw.id}/members`, budget);
       t.members = members
         .map((u) => u.login ?? u.username)
         .filter((u): u is string => typeof u === "string")
         .map((username) => ({ username }));
-      const repos = await paginate<GhRepo>(client, `/teams/${raw.id}/repos`, budget);
+      const repos = await paginate<ForgejoRepo>(client, `/teams/${raw.id}/repos`, budget);
       t.repos = repos
         .map((r) => r.name)
         .filter((n): n is string => typeof n === "string")
@@ -150,7 +156,7 @@ async function applyTeam(
   if (entry.kind === "create") {
     const cfg = entry.after as TeamConfig;
     charge(budget);
-    const created = await client.request<GhTeam>("POST", `/orgs/${org}/teams`, {
+    const created = await client.request<ForgejoTeam>("POST", `/orgs/${org}/teams`, {
       name: entry.key,
       ...buildTeamBody(cfg),
     });
@@ -171,7 +177,10 @@ async function applyTeam(
   if (typeof id !== "number") throw new Error(`team '${entry.key}' has no live id`);
   if (entry.kind === "update") {
     charge(budget);
-    await client.request("PATCH", `/teams/${id}`, buildTeamBody(entry.after as TeamConfig));
+    // Forgejo's EditTeamOption requires `name`; entry.key is the desired team
+    // name, so this is a no-op for plain updates and the rename for a
+    // `previously:`-resolved entry.
+    await client.request("PATCH", `/teams/${id}`, { name: entry.key, ...buildTeamBody(entry.after as TeamConfig) });
     return;
   }
   if (entry.kind === "delete") {

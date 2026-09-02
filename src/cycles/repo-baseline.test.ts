@@ -38,7 +38,7 @@ describe("repoBaselineCycle.apply", () => {
     expect(client.calls[0]).toMatchObject({
       method: "POST",
       path: "/repos/tmpl/base/generate",
-      body: { owner: "acme", name: "svc", private: false },
+      body: { owner: "acme", name: "svc", private: false, git_content: true },
     });
   });
   it("ignores non-create / foreign entries", async () => {

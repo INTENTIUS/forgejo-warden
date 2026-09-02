@@ -22,7 +22,7 @@ import type { LiveOrgState, LiveOrgSettings } from "../reconcile/live.js";
 export type OrgSettingsScope = Record<string, never>;
 
 /** Minimal shape of the `GET /orgs/{org}` response we read. */
-interface GhOrg {
+interface ForgejoOrg {
   full_name?: string | null;
   description?: string | null;
   website?: string | null;
@@ -33,7 +33,7 @@ interface GhOrg {
 
 const VALID_VISIBILITY = new Set(["public", "limited", "private"]);
 
-function mapOrgToLive(raw: GhOrg): LiveOrgSettings {
+function mapOrgToLive(raw: ForgejoOrg): LiveOrgSettings {
   const live: LiveOrgSettings = {};
   if (raw.full_name != null) live.fullName = raw.full_name;
   if (raw.description != null) live.description = raw.description;
@@ -77,9 +77,9 @@ export const orgSettingsCycle: Cycle<OrgSettingsScope> = {
       throw new BudgetExhaustedError();
     }
     budget.use(1);
-    let raw: GhOrg;
+    let raw: ForgejoOrg;
     try {
-      raw = await client.request<GhOrg>("GET", `/orgs/${scopeId}`);
+      raw = await client.request<ForgejoOrg>("GET", `/orgs/${scopeId}`);
     } catch (err) {
       if (err instanceof Error && err.message.includes("404")) return {};
       throw err;

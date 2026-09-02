@@ -22,7 +22,7 @@ import { charge, paginate } from "./_shared.js";
 
 export type RepoSettingsScope = Record<string, never>;
 
-interface GhRepo {
+interface ForgejoRepo {
   name?: string;
   description?: string | null;
   website?: string | null;
@@ -38,7 +38,7 @@ interface GhRepo {
   topics?: string[] | null;
 }
 
-function mapRepoToLive(raw: GhRepo): LiveRepo {
+function mapRepoToLive(raw: ForgejoRepo): LiveRepo {
   const r: LiveRepo = {};
   if (raw.description != null) r.description = raw.description;
   if (raw.website != null) r.website = raw.website;
@@ -82,7 +82,7 @@ export const repoSettingsCycle: Cycle<RepoSettingsScope> = {
     _scope: RepoSettingsScope,
     budget: RateBudget,
   ): Promise<LiveOrgState> {
-    const raws = await paginate<GhRepo>(client, `/orgs/${scopeId}/repos`, budget);
+    const raws = await paginate<ForgejoRepo>(client, `/orgs/${scopeId}/repos`, budget);
     const repos: Record<string, LiveRepo> = {};
     for (const raw of raws) {
       if (raw.name) repos[raw.name] = mapRepoToLive(raw);

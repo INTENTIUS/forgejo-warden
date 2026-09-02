@@ -7,7 +7,8 @@
  * types so cycles import them from here.
  *
  * Guardrails: the removal cap (don't let a typo mass-delete) + rename-without-
- * loss (a `previously` alias collapses a delete+create into an update). The
+ * loss (a `previously` alias collapses a delete+create into an update — applied
+ * to the change set itself, so the plan and the apply both see the rename). The
  * member-floor / self-lockout guardrails are GitHub-flavored and omitted; add a
  * Forgejo equivalent later only if meaningful.
  *
@@ -20,6 +21,7 @@ import {
   runReconcile as coreRunReconcile,
   runGuardrailChecks,
   removalDeltaCap,
+  resolveRenames,
 } from "@intentius/chant/reconcile";
 import type { Cycle as CoreCycle, ReconcileResult, DiffOptions } from "@intentius/chant/reconcile";
 import type { ForgejoClient } from "../auth/client.js";
@@ -88,7 +90,10 @@ export async function runReconcile<TScope = unknown>(
       const scoped: DiffOptions = dopts?.isOwned
         ? dopts
         : { ...dopts, isOwned: isOwnedFromConfig(opts.config.orgs[scopeId]?.owned) };
-      return diff(scopeId, desired, live, scoped);
+      // Resolve `previously:` rename aliases in the change set itself, so the
+      // plan and the apply see one update (the live id survives) rather than a
+      // delete + create. Guardrails re-resolve internally; that is idempotent.
+      return resolveRenames(diff(scopeId, desired, live, scoped));
     },
     guardrails: (changeSet) =>
       runGuardrailChecks(changeSet, [(resolved) => removalDeltaCap(resolved, { maxFraction })]),

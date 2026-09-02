@@ -61,7 +61,7 @@ export interface TeamConfig {
   units?: string[];
   members?: TeamMember[];
   repos?: TeamRepo[];
-  /** Former team name; turns a rename into an update (see guardrail resolveRenames). */
+  /** Former team name; a matching pending delete collapses into a rename update (`resolveRenames`). */
   previously?: string;
 }
 
@@ -74,9 +74,9 @@ export interface TeamConfig {
  * Forgejo uses branch protections, not GitHub-style rulesets.
  */
 export interface BranchProtectionConfig {
-  /** Rule name (the identity key). Forgejo's `rule_name`. */
+  /** Rule name (the identity key): the branch name or glob the rule applies to. Forgejo's `rule_name`. */
   ruleName: string;
-  /** Branch name glob the rule applies to (Forgejo's `branch_name`/`rule_name`). */
+  /** Allow direct pushes to matching branches. */
   enablePush?: boolean;
   requireSignedCommits?: boolean;
   requiredApprovals?: number;

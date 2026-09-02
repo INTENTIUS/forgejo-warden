@@ -23,7 +23,7 @@ import { charge, paginate } from "./_shared.js";
 
 export type BranchProtectionScope = Record<string, never>;
 
-interface GhBP {
+interface ForgejoBP {
   rule_name?: string;
   branch_name?: string;
   enable_push?: boolean;
@@ -34,11 +34,11 @@ interface GhBP {
   block_on_outdated_branch?: boolean;
   dismiss_stale_approvals?: boolean;
 }
-interface GhRepo {
+interface ForgejoRepo {
   name?: string;
 }
 
-function mapBP(raw: GhBP): LiveBranchProtection {
+function mapBP(raw: ForgejoBP): LiveBranchProtection {
   const bp: LiveBranchProtection = { ruleName: raw.rule_name ?? raw.branch_name ?? "" };
   if (typeof raw.enable_push === "boolean") bp.enablePush = raw.enable_push;
   if (typeof raw.require_signed_commits === "boolean") bp.requireSignedCommits = raw.require_signed_commits;
@@ -74,11 +74,11 @@ export const branchProtectionCycle: Cycle<BranchProtectionScope> = {
     _scope: BranchProtectionScope,
     budget: RateBudget,
   ): Promise<LiveOrgState> {
-    const orgRepos = await paginate<GhRepo>(client, `/orgs/${scopeId}/repos`, budget);
+    const orgRepos = await paginate<ForgejoRepo>(client, `/orgs/${scopeId}/repos`, budget);
     const repos: Record<string, LiveRepo> = {};
     for (const r of orgRepos) {
       if (!r.name) continue;
-      const bps = await paginate<GhBP>(client, `/repos/${scopeId}/${r.name}/branch_protections`, budget);
+      const bps = await paginate<ForgejoBP>(client, `/repos/${scopeId}/${r.name}/branch_protections`, budget);
       repos[r.name] = { branchProtection: bps.map(mapBP) };
     }
     return { repos };

@@ -1,5 +1,6 @@
 /**
- * Hermetic end-to-end harness — exercises every registered cycle against a REAL
+ * Hermetic end-to-end harness — exercises every registered cycle's READ path
+ * (fetchLive + buildDesired + diff), plus one opt-in apply, against a REAL
  * Forgejo instance (a throwaway Docker Compose stack, see e2e/docker-compose.yml
  * + e2e/bootstrap.sh). Gated and excluded from the default test run
  * (`vitest.config.ts` only globs `src/**`); run with `npm run test:e2e:run`.
