@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { removalDeltaCap } from "@intentius/chant/reconcile";
 import type { ChangeSet } from "@intentius/chant/reconcile";
-import { removalLiveCap, runReconcile, type Cycle } from "./runner.js";
+import { runReconcile, type Cycle } from "./runner.js";
 import type { ForgejoClient } from "../auth/client.js";
 import type { OrgConfig } from "../config/types.js";
 import type { LiveOrgState } from "./live.js";
@@ -127,7 +127,7 @@ describe("runReconcile (Forgejo adapter)", () => {
     expect(result.cycles[0]!.counts.delete).toBe(0);
   });
 
-  it("removalLiveCap blocks a mass-delete apply", async () => {
+  it("the removal cap blocks a mass-delete apply", async () => {
     const applied: string[] = [];
     const live: LiveOrgState = { members: Array.from({ length: 10 }, (_, i) => ({ username: `m${i}` })) };
     const result = await runReconcile({
@@ -144,7 +144,7 @@ describe("runReconcile (Forgejo adapter)", () => {
   });
 });
 
-describe("removalLiveCap (live-relative removal cap)", () => {
+describe("removalDeltaCap wiring (live managedTotal denominator)", () => {
   const tenLive: LiveOrgState = {
     members: Array.from({ length: 10 }, (_, i) => ({ username: `m${i}` })),
   };
@@ -178,12 +178,15 @@ describe("removalLiveCap (live-relative removal cap)", () => {
     const cr = result.cycles[0]!;
     expect(cr.guardrailBlocked).toBe(true);
     if (cr.guardrails.ok) throw new Error("expected diagnostics");
-    expect(cr.guardrails.diagnostics[0]!.guardrail).toBe("removalLiveCap");
+    expect(cr.guardrails.diagnostics[0]!.guardrail).toBe("removalDeltaCap");
     expect(cr.guardrails.diagnostics[0]!.message).toContain("4 of 10 live managed entries");
     expect(applied).toHaveLength(0);
   });
 
-  it("zero live managed entries falls back to chant's plan-relative removalDeltaCap", () => {
+  it("a zero live denominator falls back to the plan-relative cap (the wiring's zero-live path)", () => {
+    // The runner passes `managedTotal: countLiveManaged(...)` unconditionally;
+    // chant ignores a non-positive denominator and keeps the plan-relative
+    // behavior, so a miscounted zero can never disable the guardrail.
     const changeSet: ChangeSet = {
       org: "acme",
       entries: [
@@ -191,11 +194,13 @@ describe("removalLiveCap (live-relative removal cap)", () => {
         { kind: "update", resourceType: "member", key: "b", before: {}, after: {}, fields: [] },
       ],
     };
-    expect(removalLiveCap(changeSet, 0)).toEqual(removalDeltaCap(changeSet));
-    expect(removalLiveCap(changeSet, 0, { maxFraction: 0.6 })).toEqual(
+    expect(removalDeltaCap(changeSet, { managedTotal: 0 })).toEqual(removalDeltaCap(changeSet));
+    expect(removalDeltaCap(changeSet, { managedTotal: 0, maxFraction: 0.6 })).toEqual(
       removalDeltaCap(changeSet, { maxFraction: 0.6 }),
     );
-    expect(removalLiveCap({ org: "acme", entries: [] }, 0)).toBeNull();
+    // 1 delete of 2 non-create plan entries = 50% > 25% → the fallback still trips.
+    expect(removalDeltaCap(changeSet, { managedTotal: 0 })).not.toBeNull();
+    expect(removalDeltaCap({ org: "acme", entries: [] }, { managedTotal: 0 })).toBeNull();
   });
 
   it("guardrails see the count captured from the IMMEDIATELY preceding diff (per scope×cycle sequencing)", async () => {

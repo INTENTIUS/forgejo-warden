@@ -51,5 +51,5 @@ Extras exercised along the way:
   repo-variable value re-fetch (Forgejo's list omits `data`).
 
 Guardrails ride along implicitly: delete scenarios pass an explicit
-`removalDeltaCapFraction` where the default 25% `removalLiveCap` would
+`removalDeltaCapFraction` where the default 25% `removalDeltaCap` would
 (correctly) block a small-denominator smoke org.

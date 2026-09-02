@@ -121,7 +121,7 @@ describe("diff: teams — `previously:` renames directly (no `owned` required)",
   });
 });
 
-describe("countLiveManaged (removalLiveCap denominator)", () => {
+describe("countLiveManaged (removalDeltaCap's managedTotal denominator)", () => {
   it("counts only collections the policy declares", () => {
     const live: LiveOrgState = {
       members: [{ username: "a" }, { username: "b" }],

@@ -38,10 +38,10 @@ list.
 When forgejo-warden is embedded as a library, a caller-supplied
 `diffOptions.isOwned` on `runReconcile` takes precedence over the policy's
 `owned` declarations. Owned deletes still run the guardrails before any
-apply: `removalLiveCap` refuses an apply whose deletes exceed 25% of the live
-managed entries in the collections the policy declares; with nothing live to
-measure against it falls back to chant's plan-relative `removalDeltaCap`
-(deletes over the plan's updates plus deletes). A team rename declared with
+apply: chant's `removalDeltaCap`, wired with a live denominator, refuses an
+apply whose deletes exceed 25% of the live managed entries in the collections
+the policy declares; with nothing live to measure against it keeps its
+plan-relative behavior (deletes over the plan's updates plus deletes). A team rename declared with
 `previously:` is a single update and never counts as a delete.
 
 ## A complete policy

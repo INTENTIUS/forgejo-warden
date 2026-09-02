@@ -79,12 +79,13 @@ export const RESOURCE_TYPE_ORDER = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Live managed count (removalLiveCap denominator)
+// Live managed count (removalDeltaCap's live denominator)
 // ---------------------------------------------------------------------------
 
 /**
  * Count the LIVE entries in the collections `desired` declares — the
- * denominator for the runner's `removalLiveCap` guardrail. Mirrors `diff`'s
+ * `managedTotal` denominator the runner passes to chant's `removalDeltaCap`
+ * guardrail. Mirrors `diff`'s
  * declared-slice condition exactly: a collection contributes only when the
  * desired config declares it, and nested collections (team members/repos, a
  * repo's branch protections/webhooks/secrets/variables) contribute only for

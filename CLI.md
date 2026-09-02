@@ -83,11 +83,11 @@ is not currently exposed as a flag).
 
 ## Guardrails
 
-The apply path runs one guardrail: `removalLiveCap` refuses an apply whose
-deletes exceed 25% of the live managed entries in the collections the policy
-declares; with nothing live to measure against it falls back to chant's
-plan-relative `removalDeltaCap` (deletes over the plan's updates plus
-deletes). A truncated or mistyped policy therefore cannot mass-delete in one
+The apply path runs one guardrail: chant's `removalDeltaCap`, wired with a
+live denominator, refuses an apply whose deletes exceed 25% of the live
+managed entries in the collections the policy declares; with nothing live to
+measure against it keeps its plan-relative behavior (deletes over the plan's
+updates plus deletes). A truncated or mistyped policy therefore cannot mass-delete in one
 run, while one stale delete in an otherwise converged plan still passes (a
 plan-relative cap alone would count it as 100%). Rename aliases (`previously:`
 on a team) are resolved first, so a rename does not count as a delete.
