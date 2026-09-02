@@ -18,11 +18,10 @@ Shared behavior, so it isn't repeated eight times:
   resources owned; a programmatic `diffOptions.isOwned` predicate passed to
   `runReconcile` overrides the declaration when supplied. The per-cycle
   delete behavior below applies only in orgs that opted in.
-- **Guardrails before apply.** Chant's `removalDeltaCap`, wired with a live
-  denominator, refuses an apply whose deletes exceed 25% of the live managed
-  entries in the collections the policy declares; with nothing live to
-  measure against it keeps its plan-relative behavior (deletes over the
-  plan's updates plus deletes). A team rename declared with `previously:` is planned as a
+- **Guardrails before apply.** Chant's `removalDeltaCap` refuses an apply
+  whose deletes exceed 25% (or `--removal-cap-fraction`) of any single
+  resource type's live managed entries; see [POLICY.md](POLICY.md), "The
+  removal cap". A team rename declared with `previously:` is planned as a
   single update, so a rename is not counted as a deletion. A tripped
   guardrail blocks the apply (exit 1) unless `--allow-guardrail-override` is
   set.

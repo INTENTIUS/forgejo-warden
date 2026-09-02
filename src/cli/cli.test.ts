@@ -30,6 +30,28 @@ describe("parseReconcileArgs", () => {
     expect(a.allowGuardrailOverride).toBe(true);
   });
 
+  it("parses --removal-cap-fraction and leaves it undefined by default", () => {
+    const base = ["--config", "g.yml", "--base-url", "u", "--token-env", "T"];
+    expect(parseReconcileArgs(base).removalCapFraction).toBeUndefined();
+    expect(parseReconcileArgs([...base, "--removal-cap-fraction", "0.5"]).removalCapFraction).toBe(0.5);
+    expect(parseReconcileArgs([...base, "--removal-cap-fraction", "1"]).removalCapFraction).toBe(1);
+  });
+
+  it("throws code 2 on a --removal-cap-fraction outside (0,1]", () => {
+    const base = ["--config", "g.yml", "--base-url", "u", "--token-env", "T"];
+    const bad = (v: string) =>
+      expect(() => parseReconcileArgs([...base, "--removal-cap-fraction", v])).toThrow(
+        expect.objectContaining({ code: 2 }),
+      );
+    bad("0");
+    bad("-0.5");
+    bad("1.5");
+    bad("nope");
+    expect(() => parseReconcileArgs([...base, "--removal-cap-fraction"])).toThrow(
+      expect.objectContaining({ code: 2 }),
+    );
+  });
+
   it("throws code 2 on missing config / instance url / token / bad mode / unknown flag", () => {
     const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
     bad(["--base-url", "u", "--token-env", "T"]); // no config

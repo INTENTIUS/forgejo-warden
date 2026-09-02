@@ -341,10 +341,14 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
       expect(after.description).toBe("governed smoke team");
     }, 60_000);
 
-    it("removes an out-of-band team member via `owned: [team-member]`", async () => {
+    it("removes an out-of-band team member via `owned: [team-member]` at a realistic cap", async () => {
       const platoon = (await getTeams()).find((t) => t.name === "platoon")!;
       await client.request("PUT", `/teams/${platoon.id}/members/${EXTRA_USER}`);
-      const cr = await applyClean({ owned: ["team-member"], ...teamPolicy() }, teamsCycle, 1);
+      // 1 delete of 2 live platoon members = 50%: passes a 0.5 cap only
+      // because the denominator is the LIVE team-member count — the same
+      // plan holds exactly one team-member non-create, so a plan-relative
+      // cap would read 100% and block.
+      const cr = await applyClean({ owned: ["team-member"], ...teamPolicy() }, teamsCycle, 0.5);
       expect(cr.applied.map((e) => `${e.kind}:${e.key}`)).toContain(`delete:platoon/${EXTRA_USER}`);
       const members = await client.request<Array<{ login?: string }>>(
         "GET",
@@ -353,13 +357,26 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
       expect(members.map((m) => m.login)).toEqual([admin]);
     }, 60_000);
 
-    it("deletes a stale live-only team via `owned: [team]`", async () => {
+    it("the default removal cap blocks the stale-team delete, naming the type", async () => {
       await client.request("POST", `/orgs/${ORG}/teams`, {
         name: "stale",
         permission: "read",
         units: ["repo.code"],
       });
-      const cr = await applyClean({ owned: ["team"], ...teamPolicy() }, teamsCycle, 1);
+      // 1 delete of 3 live teams (Owners, platoon, stale) = 33% > the default
+      // 25%: the apply is refused and the diagnostic is per-type.
+      const cr = await reconcile({ owned: ["team"], ...teamPolicy() }, teamsCycle, "apply");
+      expect(cr.guardrailBlocked).toBe(true);
+      if (cr.guardrails.ok) throw new Error("expected removalDeltaCap diagnostics");
+      expect(cr.guardrails.diagnostics[0]!.guardrail).toBe("removalDeltaCap");
+      expect(cr.guardrails.diagnostics[0]!.message).toContain("1 of 3 live team entries (33%)");
+      expect(cr.applied).toEqual([]);
+      expect((await getTeams()).map((t) => t.name)).toContain("stale"); // nothing deleted
+    }, 60_000);
+
+    it("deletes the stale live-only team via `owned: [team]` once the cap allows it", async () => {
+      // The same plan under a raised 0.5 cap: 1 of 3 live teams = 33% passes.
+      const cr = await applyClean({ owned: ["team"], ...teamPolicy() }, teamsCycle, 0.5);
       expect(cr.applied.map((e) => `${e.kind}:${e.key}`)).toContain("delete:stale");
       const names = (await getTeams()).map((t) => t.name);
       expect(names).not.toContain("stale");
@@ -411,7 +428,9 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
     }, 60_000);
 
     it("removes a member via `owned: [member]` (remove-only semantics)", async () => {
-      const cr = await applyClean({ owned: ["member"], members: [{ username: admin }] }, membershipCycle, 1);
+      // 1 delete of 2 live org members = 50% — a 0.5 cap passes on the live
+      // per-type denominator (plan-relative would read 100%).
+      const cr = await applyClean({ owned: ["member"], members: [{ username: admin }] }, membershipCycle, 0.5);
       expect(cr.applied.map((e) => `${e.kind}:${e.key}`)).toEqual([`delete:${EXTRA_USER}`]);
       expect(await memberLogins()).toEqual([admin]);
     }, 60_000);
@@ -512,6 +531,8 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
 
     it("deletes a rule via `owned: [branch-protection]`", async () => {
       const gone: OrgConfig = { owned: ["branch-protection"], repos: { [REPO]: { branchProtection: [] } } };
+      // 1 of 1 live rule = 100%: a deliberate full wipe of a one-entry
+      // collection genuinely needs the cap at 1 here.
       const cr = await applyClean(gone, branchProtectionCycle, 1);
       expect(cr.applied.map((e) => `${e.kind}:${e.key}`)).toContain(`delete:${REPO}/main`);
       const rules = await client.request<unknown[]>("GET", `/repos/${ORG}/${REPO}/branch_protections`);
@@ -616,6 +637,8 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
 
     it("deletes org secrets and variables via `owned`", async () => {
       const gone: OrgConfig = { owned: ["org-secret", "org-variable"], secrets: [], variables: [] };
+      // Full wipes (1 of 1 secret, 2 of 2 variables = 100% each) — the cap
+      // must be 1 for this deliberate teardown.
       const cr = await applyClean(gone, secretsVariablesCycle, 1);
       expect(cr.applied.map((e) => `${e.kind}:${e.resourceType}:${e.key}`)).toContain(
         "delete:org-secret:SMOKE_TOKEN",
@@ -673,6 +696,8 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
         webhooks: [],
         repos: { [REPO]: { webhooks: [] } },
       };
+      // Full wipes again (1 of 1 hook at each scope = 100%) — cap 1 is the
+      // honest setting for this deliberate teardown.
       const cr = await applyClean(gone, webhooksCycle, 1);
       expect(cr.applied.filter((e) => e.kind === "delete")).toHaveLength(2);
       expect(await orgHooks()).toEqual([]);

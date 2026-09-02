@@ -37,12 +37,24 @@ list.
 
 When forgejo-warden is embedded as a library, a caller-supplied
 `diffOptions.isOwned` on `runReconcile` takes precedence over the policy's
-`owned` declarations. Owned deletes still run the guardrails before any
-apply: chant's `removalDeltaCap`, wired with a live denominator, refuses an
-apply whose deletes exceed 25% of the live managed entries in the collections
-the policy declares; with nothing live to measure against it keeps its
-plan-relative behavior (deletes over the plan's updates plus deletes). A team rename declared with
-`previously:` is a single update and never counts as a delete.
+`owned` declarations.
+
+### The removal cap
+
+Owned deletes still run a guardrail before any apply: chant's
+`removalDeltaCap` refuses an apply whose deletes exceed a threshold fraction
+(default 0.25; `--removal-cap-fraction` sets it, valid values in (0,1]) of
+the live managed entries — evaluated per collection. While diffing, warden
+counts the live entries of each delete-capable collection the policy
+declares, and every resource type's deletes divide by that type's own live
+count. Live entries of one type therefore never dilute a wipe of another:
+deleting 3 of 4 teams reads as 75% even with 20 team members live beside
+them. A converged plan whose only entry is one stale delete still passes
+(1 of N live entries, not 1 of 1 planned), and a type with no live entries
+falls back to a plan-relative count for that type. A team rename declared
+with `previously:` is planned as a single update and never counts as a
+delete. A tripped cap blocks the apply (exit 1) unless
+`--allow-guardrail-override` is set.
 
 ## A complete policy
 

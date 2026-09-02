@@ -26,6 +26,7 @@ package.json at build time).
 | `--base-url <url>` | one of the two URL flags is **required** | Forgejo instance URL, e.g. `https://forgejo.example.com` or `https://codeberg.org` (no trailing `/api`) |
 | `--base-url-env <VAR>` | — | env var holding the instance URL instead of putting it on the command line |
 | `--token-env <VAR>` | **required** | env var holding the Forgejo API token. The token itself never appears in argv |
+| `--removal-cap-fraction <f>` | `0.25` | removal-cap threshold, a number in (0,1]; values outside that range exit 2 (see "Guardrails" below) |
 | `--allow-guardrail-override` | off | apply even when a guardrail trips (the plan still prints the guardrail block) |
 
 Cycle names (see [CYCLES.md](CYCLES.md)): `org-settings`, `membership`, `teams`,
@@ -83,15 +84,13 @@ is not currently exposed as a flag).
 
 ## Guardrails
 
-The apply path runs one guardrail: chant's `removalDeltaCap`, wired with a
-live denominator, refuses an apply whose deletes exceed 25% of the live
-managed entries in the collections the policy declares; with nothing live to
-measure against it keeps its plan-relative behavior (deletes over the plan's
-updates plus deletes). A truncated or mistyped policy therefore cannot mass-delete in one
-run, while one stale delete in an otherwise converged plan still passes (a
-plan-relative cap alone would count it as 100%). Rename aliases (`previously:`
-on a team) are resolved first, so a rename does not count as a delete.
-`--allow-guardrail-override` applies anyway; use it deliberately.
+The apply path runs one guardrail: chant's `removalDeltaCap`, evaluated per
+resource type against the live managed entries counted during the diff, so a
+truncated or mistyped policy cannot mass-delete in one run. See
+[POLICY.md](POLICY.md), "The removal cap" for the full promise.
+`--removal-cap-fraction` sets the threshold (default 0.25, valid in (0,1];
+out-of-range values exit 2). `--allow-guardrail-override` applies anyway;
+use both deliberately.
 
 Deletes themselves are opt-in per org: the plan contains them only for orgs the
 policy marks with `owned:` (see [POLICY.md](POLICY.md), "Delete semantics").

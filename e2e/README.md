@@ -50,6 +50,15 @@ Extras exercised along the way:
 - secrets-variables: secret material from `FORGEJO_SECRET_<NAME>`;
   repo-variable value re-fetch (Forgejo's list omits `data`).
 
-Guardrails ride along implicitly: delete scenarios pass an explicit
-`removalDeltaCapFraction` where the default 25% `removalDeltaCap` would
-(correctly) block a small-denominator smoke org.
+The removal cap is itself under test (see [POLICY.md](../POLICY.md), "The
+removal cap"):
+
+- the teams suite asserts the default cap BLOCKS a stale-team delete with
+  the per-type `1 of 3 live team entries (33%)` diagnostic;
+- the team-member, member, and team delete scenarios pass realistic
+  `removalDeltaCapFraction` values (0.5) that clear only because the
+  denominator is the per-type live count — the same plans read as 100%
+  plan-relative;
+- deliberate full wipes of one-entry collections (a lone protection rule,
+  hook, or secret) still pass a cap of 1, the honest setting for a 100%
+  teardown.

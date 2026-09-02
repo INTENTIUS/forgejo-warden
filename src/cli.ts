@@ -43,6 +43,8 @@ export interface ReconcileArgs {
   baseUrlEnv: string | undefined;
   tokenEnv: string | undefined;
   allowGuardrailOverride: boolean;
+  /** Removal-cap threshold in (0,1]; undefined leaves chant's default (0.25). */
+  removalCapFraction: number | undefined;
 }
 
 const KNOWN_FLAGS = new Set([
@@ -53,6 +55,7 @@ const KNOWN_FLAGS = new Set([
   "--base-url-env",
   "--token-env",
   "--allow-guardrail-override",
+  "--removal-cap-fraction",
 ]);
 
 /** Parse reconcile argv. Pure: throws `CliError` (with exit code) on bad input. */
@@ -65,6 +68,7 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
     baseUrlEnv: undefined,
     tokenEnv: undefined,
     allowGuardrailOverride: false,
+    removalCapFraction: undefined,
   };
 
   const need = (i: number, flag: string): string => {
@@ -103,6 +107,15 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
       case "--allow-guardrail-override":
         args.allowGuardrailOverride = true;
         break;
+      case "--removal-cap-fraction": {
+        const raw = need(++i, flag);
+        const f = Number(raw);
+        if (!(f > 0 && f <= 1)) {
+          throw new CliError(2, `--removal-cap-fraction must be a number in (0,1], got: ${raw}`);
+        }
+        args.removalCapFraction = f;
+        break;
+      }
     }
     i++;
   }
@@ -180,7 +193,14 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
 
   let result;
   try {
-    result = await runReconcile({ config, client, cycles, mode: args.mode, allowGuardrailOverride: args.allowGuardrailOverride });
+    result = await runReconcile({
+      config,
+      client,
+      cycles,
+      mode: args.mode,
+      allowGuardrailOverride: args.allowGuardrailOverride,
+      removalDeltaCapFraction: args.removalCapFraction,
+    });
   } catch (err) {
     die(3, `reconcile failed: ${errMsg(err)}`);
   }
@@ -217,6 +237,7 @@ function printUsage(): void {
       "  --cycles <name[,name...]>     Cycles to run (default: all).",
       "  --base-url <url>              Forgejo instance URL (or --base-url-env <VAR>).",
       "  --token-env <VAR>             Env var holding the Forgejo API token.",
+      "  --removal-cap-fraction <f>    Removal-cap threshold, a number in (0,1] (default 0.25).",
       "  --allow-guardrail-override    Apply even when guardrails trip.",
       "",
       "Exit codes: 0 success · 1 guardrail block · 2 arg/config error · 3 runtime error.",
