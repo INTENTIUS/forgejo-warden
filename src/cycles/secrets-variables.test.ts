@@ -20,6 +20,20 @@ describe("secretsVariablesCycle.fetchLive", () => {
     expect(live.variables).toEqual([{ name: "ENV", value: "prod" }]);
     expect(live.repos!.api).toEqual({ secrets: [{ name: "DEPLOY_KEY" }], variables: [{ name: "REGION", value: "eu" }] });
   });
+
+  it("re-fetches a repo variable whose LIST entry has no value (Forgejo list omits `data`)", async () => {
+    const client = makeClient({
+      "GET /orgs/acme/actions/secrets?limit=50&page=1": [],
+      "GET /orgs/acme/actions/variables?limit=50&page=1": [],
+      "GET /orgs/acme/repos?limit=50&page=1": [{ name: "api" }],
+      "GET /repos/acme/api/actions/secrets?limit=50&page=1": [],
+      "GET /repos/acme/api/actions/variables?limit=50&page=1": [{ name: "REGION", data: "" }],
+      "GET /repos/acme/api/actions/variables/REGION": { name: "REGION", data: "eu" },
+    });
+    const live = await secretsVariablesCycle.fetchLive(client, "acme", scope, makeBudget());
+    expect(live.repos!.api!.variables).toEqual([{ name: "REGION", value: "eu" }]);
+    expect(client.calls.some((c) => c.path === "/repos/acme/api/actions/variables/REGION")).toBe(true);
+  });
 });
 
 describe("secretsVariablesCycle.buildDesired", () => {

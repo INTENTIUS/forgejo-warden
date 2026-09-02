@@ -11,6 +11,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "e2e/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

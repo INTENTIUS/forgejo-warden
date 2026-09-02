@@ -84,10 +84,12 @@ cap so a typo can't mass-delete ([POLICY.md](POLICY.md), "Delete semantics").
 **fully hermetic**: it stands up a throwaway Forgejo via Docker Compose and
 mints an admin token, then provisions its own org and runs every cycle's read
 path against it (fetchLive, buildDesired, diff, asserted read-only), so live
-API-contract drift gets caught. The opt-in apply phase performs one real write
-(an org-settings update, verified by re-fetch); the other cycles' apply paths
-are covered by the offline unit suite, not end-to-end. No external account or
-secrets are needed:
+API-contract drift gets caught. The opt-in apply phase is a full smoke: every
+cycle applies from a policy, converges to an empty plan, and corrects an
+out-of-band mutation, plus real `owned:` deletes, the `previously:` team
+rename, template-based repo provisioning, and secret/membership semantics —
+see [e2e/README.md](https://github.com/INTENTIUS/forgejo-warden/blob/main/e2e/README.md)
+for the coverage table. No external account or secrets are needed:
 
 ```sh
 eval "$(npm run --silent e2e:up)"   # compose up + mint token

@@ -66,6 +66,19 @@ export const secretsVariablesCycle: Cycle<SecretsVariablesScope> = {
       if (!r.name) continue;
       const rs = mapSecrets(await paginate<ForgejoSecret>(client, `/repos/${scopeId}/${r.name}/actions/secrets`, budget));
       const rv = mapVariables(await paginate<ForgejoVariable>(client, `/repos/${scopeId}/${r.name}/actions/variables`, budget));
+      // Forgejo quirk (seen live on 11.x, caught by the e2e smoke): the repo
+      // variable LIST endpoint returns `data: ""` for every entry — only the
+      // single-variable GET carries the value. Re-fetch empty ones so the diff
+      // compares real values instead of planning a phantom update forever.
+      for (const v of rv) {
+        if (v.value) continue;
+        charge(budget);
+        const single = await client.request<ForgejoVariable>(
+          "GET",
+          `/repos/${scopeId}/${r.name}/actions/variables/${encodeURIComponent(v.name)}`,
+        );
+        v.value = single.data ?? single.value;
+      }
       repos[r.name] = { secrets: rs, variables: rv };
     }
     return { secrets, variables, repos };
