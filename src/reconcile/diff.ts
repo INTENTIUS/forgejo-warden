@@ -79,55 +79,33 @@ export const RESOURCE_TYPE_ORDER = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Live managed count (removalDeltaCap's live denominator)
+// Live managed counts (removalDeltaCap's per-type denominators)
 // ---------------------------------------------------------------------------
 
-/**
- * Count the LIVE entries in the collections `desired` declares — the
- * `managedTotal` denominator the runner passes to chant's `removalDeltaCap`
- * guardrail. Mirrors `diff`'s
- * declared-slice condition exactly: a collection contributes only when the
- * desired config declares it, and nested collections (team members/repos, a
- * repo's branch protections/webhooks/secrets/variables) contribute only for
- * parents present in both desired and live — the same entries the diff walks.
- * The settings singleton and `repoBaselines` (existence-only provisioning)
- * never emit deletes and are excluded.
- */
-export function countLiveManaged(desired: OrgConfig, live: LiveOrgState): number {
-  let n = 0;
-  if (desired.secrets !== undefined) n += (live.secrets ?? []).length;
-  if (desired.variables !== undefined) n += (live.variables ?? []).length;
-  if (desired.webhooks !== undefined) n += (live.webhooks ?? []).length;
-  if (desired.members !== undefined) n += (live.members ?? []).length;
-  if (desired.teams !== undefined) {
-    const liveTeams = live.teams ?? {};
-    n += Object.keys(liveTeams).length;
-    for (const [name, dt] of Object.entries(desired.teams)) {
-      const lt = liveTeams[name];
-      if (!lt) continue;
-      if (dt.members !== undefined) n += (lt.members ?? []).length;
-      if (dt.repos !== undefined) n += (lt.repos ?? []).length;
-    }
-  }
-  if (desired.repos !== undefined) {
-    const liveRepos = live.repos ?? {};
-    n += Object.keys(liveRepos).length;
-    for (const [name, dr] of Object.entries(desired.repos)) {
-      const lr = liveRepos[name];
-      if (!lr) continue;
-      if (dr.branchProtection !== undefined) n += (lr.branchProtection ?? []).length;
-      if (dr.webhooks !== undefined) n += (lr.webhooks ?? []).length;
-      if (dr.secrets !== undefined) n += (lr.secrets ?? []).length;
-      if (dr.variables !== undefined) n += (lr.variables ?? []).length;
-    }
-  }
-  return n;
+/** Per-resource-type live entry counts, accumulated during the diff walk. */
+type ManagedCounts = Record<string, number>;
+
+function addLive(counts: ManagedCounts, resourceType: string, n: number): void {
+  counts[resourceType] = (counts[resourceType] ?? 0) + n;
 }
 
 // ---------------------------------------------------------------------------
 // diff — entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Diff desired config against live state into a `ChangeSet`.
+ *
+ * The returned set carries `managedCounts`: per-resource-type live entry
+ * counts, summed during this same walk — each `diffCollection` call returns
+ * its live size, and the hand-rolled team loop counts its live map. These are
+ * chant's `removalDeltaCap` per-type denominators, so they follow the diff's
+ * declared-slice condition exactly (an undeclared collection contributes
+ * nothing; a `previously:` rename walks — and counts — the old live team's
+ * children). Only delete-capable collections count: live `repo` entries are
+ * excluded (warden never deletes a repo), as are the settings singleton and
+ * `repoBaselines` (existence-only provisioning).
+ */
 export function diff(
   org: string,
   desired: OrgConfig,
@@ -135,15 +113,16 @@ export function diff(
   opts: DiffOptions = {},
 ): ChangeSet {
   const entries: ChangeSetEntry[] = [];
+  const managedCounts: ManagedCounts = {};
 
   diffSettings(desired.settings, live.settings, entries);
-  diffSecrets("", "org-secret", desired.secrets, live.secrets ?? [], opts, entries);
-  diffVariables("", "org-variable", desired.variables, live.variables ?? [], opts, entries);
-  diffWebhooks("", "org-webhook", desired.webhooks, live.webhooks ?? [], opts, entries);
+  diffSecrets("", "org-secret", desired.secrets, live.secrets ?? [], opts, entries, managedCounts);
+  diffVariables("", "org-variable", desired.variables, live.variables ?? [], opts, entries, managedCounts);
+  diffWebhooks("", "org-webhook", desired.webhooks, live.webhooks ?? [], opts, entries, managedCounts);
   diffRepoBaselines(desired.repoBaselines, live.repos ?? {}, entries);
-  diffMembers(desired.members, live.members ?? [], opts, entries);
-  diffTeams(desired.teams, live.teams ?? {}, opts, entries);
-  diffRepos(desired.repos, live.repos ?? {}, opts, entries);
+  diffMembers(desired.members, live.members ?? [], opts, entries, managedCounts);
+  diffTeams(desired.teams, live.teams ?? {}, opts, entries, managedCounts);
+  diffRepos(desired.repos, live.repos ?? {}, opts, entries, managedCounts);
 
   const typeIndex = (t: string): number => {
     const i = (RESOURCE_TYPE_ORDER as readonly string[]).indexOf(t);
@@ -154,7 +133,7 @@ export function diff(
     return ti !== 0 ? ti : a.key.localeCompare(b.key);
   });
 
-  return { org, entries };
+  return { org, entries, managedCounts };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,16 +165,17 @@ function diffMembers(
   live: LiveMember[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<MemberConfig, LiveMember>({
+  addLive(counts, "member", diffCollection<MemberConfig, LiveMember>({
     resourceType: "member",
     desired: new Map(desired.map((m) => [m.username, m])),
     live: new Map(live.map((m) => [m.username, m])),
     compareFields: () => [],
     opts,
     out,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -211,8 +191,10 @@ function diffTeams(
   live: Record<string, LiveTeam>,
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
+  addLive(counts, "team", Object.keys(live).length);
 
   // An explicit `previously:` declaration is an explicit rename intent: when a
   // live team by the previous name exists and none by the new name does, plan
@@ -250,8 +232,8 @@ function diffTeams(
     if (fields.length > 0) {
       out.push({ kind: "update", resourceType: "team", key: name, before: lt, after: dt, fields });
     }
-    diffTeamMembers(name, dt.members, lt.members ?? [], opts, out);
-    diffTeamRepos(name, dt.repos, lt.repos ?? [], opts, out);
+    diffTeamMembers(name, dt.members, lt.members ?? [], opts, out, counts);
+    diffTeamRepos(name, dt.repos, lt.repos ?? [], opts, out, counts);
   }
 
   for (const name of Object.keys(live)) {
@@ -268,9 +250,10 @@ function diffTeamMembers(
   live: LiveTeamMember[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<TeamMember, LiveTeamMember>({
+  addLive(counts, "team-member", diffCollection<TeamMember, LiveTeamMember>({
     resourceType: "team-member",
     keyPrefix: `${team}/`,
     desired: new Map(desired.map((m) => [m.username, m])),
@@ -278,7 +261,7 @@ function diffTeamMembers(
     compareFields: () => [],
     opts,
     out,
-  });
+  }));
 }
 
 function diffTeamRepos(
@@ -287,9 +270,10 @@ function diffTeamRepos(
   live: LiveTeamRepo[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<TeamRepo, LiveTeamRepo>({
+  addLive(counts, "team-repo", diffCollection<TeamRepo, LiveTeamRepo>({
     resourceType: "team-repo",
     keyPrefix: `${team}/`,
     desired: new Map(desired.map((r) => [r.name, r])),
@@ -297,7 +281,7 @@ function diffTeamRepos(
     compareFields: () => [],
     opts,
     out,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -323,8 +307,12 @@ function diffRepos(
   live: Record<string, LiveRepo>,
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
+  // No `addLive` for "repo": this loop never emits a repo delete (a live-only
+  // repo is simply unmanaged), so live repos must not enter the removal cap's
+  // denominators — they would only dilute the delete fraction of other types.
 
   for (const [name, dr] of Object.entries(desired)) {
     const lr = live[name];
@@ -341,10 +329,10 @@ function diffRepos(
     if (fields.length > 0) {
       out.push({ kind: "update", resourceType: "repo", key: name, before: lr, after: dr, fields });
     }
-    diffBranchProtection(name, dr.branchProtection, lr.branchProtection ?? [], opts, out);
-    diffWebhooks(`${name}/`, "repo-webhook", dr.webhooks, lr.webhooks ?? [], opts, out);
-    diffSecrets(`${name}/`, "repo-secret", dr.secrets, lr.secrets ?? [], opts, out);
-    diffVariables(`${name}/`, "repo-variable", dr.variables, lr.variables ?? [], opts, out);
+    diffBranchProtection(name, dr.branchProtection, lr.branchProtection ?? [], opts, out, counts);
+    diffWebhooks(`${name}/`, "repo-webhook", dr.webhooks, lr.webhooks ?? [], opts, out, counts);
+    diffSecrets(`${name}/`, "repo-secret", dr.secrets, lr.secrets ?? [], opts, out, counts);
+    diffVariables(`${name}/`, "repo-variable", dr.variables, lr.variables ?? [], opts, out, counts);
   }
 }
 
@@ -367,9 +355,10 @@ function diffBranchProtection(
   live: LiveBranchProtection[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<BranchProtectionConfig, LiveBranchProtection>({
+  addLive(counts, "branch-protection", diffCollection<BranchProtectionConfig, LiveBranchProtection>({
     resourceType: "branch-protection",
     keyPrefix: `${repo}/`,
     desired: new Map(desired.map((b) => [b.ruleName, b])),
@@ -391,7 +380,7 @@ function diffBranchProtection(
     },
     opts,
     out,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -407,9 +396,10 @@ function diffWebhooks(
   live: LiveWebhook[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<WebhookConfig, LiveWebhook>({
+  addLive(counts, resourceType, diffCollection<WebhookConfig, LiveWebhook>({
     resourceType,
     keyPrefix,
     desired: new Map(desired.map((w) => [w.url, w])),
@@ -429,7 +419,7 @@ function diffWebhooks(
     },
     opts,
     out,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -443,9 +433,10 @@ function diffSecrets(
   live: LiveSecret[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<SecretConfig, LiveSecret>({
+  addLive(counts, resourceType, diffCollection<SecretConfig, LiveSecret>({
     resourceType,
     keyPrefix,
     desired: new Map(desired.map((s) => [s.name, s])),
@@ -453,7 +444,7 @@ function diffSecrets(
     compareFields: () => [],
     opts,
     out,
-  });
+  }));
 }
 
 function diffVariables(
@@ -463,9 +454,10 @@ function diffVariables(
   live: LiveVariable[],
   opts: DiffOptions,
   out: ChangeSetEntry[],
+  counts: ManagedCounts,
 ): void {
   if (desired === undefined) return;
-  diffCollection<VariableConfig, LiveVariable>({
+  addLive(counts, resourceType, diffCollection<VariableConfig, LiveVariable>({
     resourceType,
     keyPrefix,
     desired: new Map(desired.map((v) => [v.name, v])),
@@ -476,7 +468,7 @@ function diffVariables(
         : [],
     opts,
     out,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------

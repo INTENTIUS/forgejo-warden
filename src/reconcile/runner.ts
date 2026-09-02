@@ -6,18 +6,19 @@
  * appropriate guardrail set into the shared loop, and re-exports the harness
  * types so cycles import them from here.
  *
- * Guardrails: the removal cap (don't let a typo mass-delete) + rename-without-
- * loss (a `previously` alias collapses a delete+create into an update — applied
- * to the change set itself, so the plan and the apply both see the rename). The
- * member-floor / self-lockout guardrails are GitHub-flavored and omitted; add a
- * Forgejo equivalent later only if meaningful.
+ * Guardrails: the removal cap (don't let a typo mass-delete). Rename-without-
+ * loss needs no guardrail wiring here: a `previously:` alias is planned as a
+ * direct update by warden's own `diffTeams`, so the plan and the apply both
+ * see the rename. The member-floor / self-lockout guardrails are
+ * GitHub-flavored and omitted; add a Forgejo equivalent later only if
+ * meaningful.
  *
- * The removal cap is chant's `removalDeltaCap`, wired with a live denominator:
- * `managedTotal` is the LIVE managed entry count from `countLiveManaged` over
- * the same declared slices the diff walks, so one stale delete in an otherwise
- * converged cycle does not trip at 100%. When nothing is live the cap keeps
- * its plan-relative behavior (deletes over the plan's updates + deletes), so a
- * miscounted denominator can never disable the guardrail outright.
+ * The removal cap is chant's `removalDeltaCap`, evaluated per resource type:
+ * warden's `diff` stamps `ChangeSet.managedCounts` (live entries per
+ * delete-capable collection, counted during the diff walk itself), so each
+ * type's deletes divide by that type's own live count — live entries of one
+ * type cannot dilute a wipe of another, and one stale delete in an otherwise
+ * converged cycle still reads as a small fraction rather than 100%.
  *
  * Every warden cycle stamps a cross-provider governance verb
  * (`@intentius/chant/governance`); the shared runner copies it onto change-set
@@ -28,7 +29,6 @@ import {
   runReconcile as coreRunReconcile,
   runGuardrailChecks,
   removalDeltaCap,
-  resolveRenames,
 } from "@intentius/chant/reconcile";
 import type {
   Cycle as CoreCycle,
@@ -38,7 +38,7 @@ import type {
 import type { ForgejoClient } from "../auth/client.js";
 import type { GovernanceConfig, OrgConfig } from "../config/types.js";
 import type { LiveOrgState } from "./live.js";
-import { diff, countLiveManaged } from "./diff.js";
+import { diff } from "./diff.js";
 
 export { BudgetExhaustedError } from "@intentius/chant/reconcile";
 export type {
@@ -64,7 +64,7 @@ export interface RunReconcileOptions<TScope = unknown> {
   diffOptions?: DiffOptions;
   allowGuardrailOverride?: boolean;
   requestBudget?: number;
-  /** Max fraction of live managed entries deletable in one apply (chant's `removalDeltaCap`). Default 0.25. */
+  /** Max fraction, in (0,1], of any one resource type's live managed entries deletable in one apply — passed to chant's `removalDeltaCap`, which owns the default (0.25) and throws on an out-of-range value. */
   removalDeltaCapFraction?: number;
 }
 
@@ -90,13 +90,6 @@ function isOwnedFromConfig(owned: OrgConfig["owned"]): DiffOptions["isOwned"] {
 export async function runReconcile<TScope = unknown>(
   opts: RunReconcileOptions<TScope>,
 ): Promise<ReconcileResult> {
-  const maxFraction = opts.removalDeltaCapFraction ?? 0.25;
-  // `removalDeltaCap`'s live denominator (`managedTotal`), captured from the
-  // immediately preceding diff call. Chant's loop is strictly sequential per
-  // scope×cycle — diff runs, then guardrails run on that diff's change set
-  // before the next diff — so a single captured value can't be read stale
-  // (locked by a runner test).
-  let liveManagedTotal = 0;
   return coreRunReconcile<ForgejoClient, OrgConfig, LiveOrgState, TScope>({
     client: opts.client,
     scopes: opts.config.orgs,
@@ -107,15 +100,19 @@ export async function runReconcile<TScope = unknown>(
       const scoped: DiffOptions = dopts?.isOwned
         ? dopts
         : { ...dopts, isOwned: isOwnedFromConfig(opts.config.orgs[scopeId]?.owned) };
-      liveManagedTotal = countLiveManaged(desired, live);
-      // Resolve `previously:` rename aliases in the change set itself, so the
-      // plan and the apply see one update (the live id survives) rather than a
-      // delete + create. Guardrails re-resolve internally; that is idempotent.
-      return resolveRenames(diff(scopeId, desired, live, scoped));
+      // No `resolveRenames` here: warden's `previously:` renames are planned
+      // as direct updates inside `diffTeams`, so the change set never carries
+      // a delete + create pair for it to collapse. `runGuardrailChecks` still
+      // resolves internally before its checks, so guardrail semantics are
+      // unchanged.
+      return diff(scopeId, desired, live, scoped);
     },
     guardrails: (changeSet) =>
       runGuardrailChecks(changeSet, [
-        (resolved) => removalDeltaCap(resolved, { maxFraction, managedTotal: liveManagedTotal }),
+        // Per-type live denominators ride on `changeSet.managedCounts`
+        // (stamped by warden's diff); chant validates the fraction's (0,1]
+        // bound and owns the 0.25 default.
+        (resolved) => removalDeltaCap(resolved, { maxFraction: opts.removalDeltaCapFraction }),
       ]),
     diffOptions: opts.diffOptions,
     allowGuardrailOverride: opts.allowGuardrailOverride,

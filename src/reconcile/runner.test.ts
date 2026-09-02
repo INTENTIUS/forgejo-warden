@@ -4,8 +4,6 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { removalDeltaCap } from "@intentius/chant/reconcile";
-import type { ChangeSet } from "@intentius/chant/reconcile";
 import { runReconcile, type Cycle } from "./runner.js";
 import type { ForgejoClient } from "../auth/client.js";
 import type { OrgConfig } from "../config/types.js";
@@ -144,14 +142,14 @@ describe("runReconcile (Forgejo adapter)", () => {
   });
 });
 
-describe("removalDeltaCap wiring (live managedTotal denominator)", () => {
+describe("removalDeltaCap (per-type live denominators)", () => {
   const tenLive: LiveOrgState = {
     members: Array.from({ length: 10 }, (_, i) => ({ username: `m${i}` })),
   };
   const keep = (n: number) =>
     cfg(Array.from({ length: n }, (_, i) => `m${i}`));
 
-  it("1 stale delete of 10 live passes (chant's plan-relative cap would trip at 100%)", async () => {
+  it("1 stale delete of 10 live passes (a plan-relative cap would trip at 100%)", async () => {
     const applied: string[] = [];
     const result = await runReconcile({
       config: keep(9), // converged but for one stale delete: 1 of 10 live = 10%
@@ -166,7 +164,7 @@ describe("removalDeltaCap wiring (live managedTotal denominator)", () => {
     expect(applied).toEqual(["m9"]);
   });
 
-  it("4 deletes of 10 live blocks (40% > 25%), naming live managed entries", async () => {
+  it("4 deletes of 10 live blocks (40% > 25%), naming the offending type", async () => {
     const applied: string[] = [];
     const result = await runReconcile({
       config: keep(6), // 4 of 10 live = 40%
@@ -179,66 +177,73 @@ describe("removalDeltaCap wiring (live managedTotal denominator)", () => {
     expect(cr.guardrailBlocked).toBe(true);
     if (cr.guardrails.ok) throw new Error("expected diagnostics");
     expect(cr.guardrails.diagnostics[0]!.guardrail).toBe("removalDeltaCap");
-    expect(cr.guardrails.diagnostics[0]!.message).toContain("4 of 10 live managed entries");
+    expect(cr.guardrails.diagnostics[0]!.message).toContain("4 of 10 live member entries");
     expect(applied).toHaveLength(0);
   });
 
-  it("a zero live denominator falls back to the plan-relative cap (the wiring's zero-live path)", () => {
-    // The runner passes `managedTotal: countLiveManaged(...)` unconditionally;
-    // chant ignores a non-positive denominator and keeps the plan-relative
-    // behavior, so a miscounted zero can never disable the guardrail.
-    const changeSet: ChangeSet = {
-      org: "acme",
-      entries: [
-        { kind: "delete", resourceType: "member", key: "a", before: { username: "a" } },
-        { kind: "update", resourceType: "member", key: "b", before: {}, after: {}, fields: [] },
-      ],
+  it("3 team deletes of 4 live block at 75% even beside 20 live team members", async () => {
+    // The dilution case from the review: a pooled denominator read this wipe
+    // as 3 of 24 entries (12.5%) and let it through. Per-type counts divide
+    // team deletes by live teams only.
+    const live: LiveOrgState = {
+      teams: {
+        t0: { id: 0, members: Array.from({ length: 20 }, (_, i) => ({ username: `m${i}` })) },
+        t1: { id: 1 },
+        t2: { id: 2 },
+        t3: { id: 3 },
+      },
     };
-    expect(removalDeltaCap(changeSet, { managedTotal: 0 })).toEqual(removalDeltaCap(changeSet));
-    expect(removalDeltaCap(changeSet, { managedTotal: 0, maxFraction: 0.6 })).toEqual(
-      removalDeltaCap(changeSet, { maxFraction: 0.6 }),
-    );
-    // 1 delete of 2 non-create plan entries = 50% > 25% → the fallback still trips.
-    expect(removalDeltaCap(changeSet, { managedTotal: 0 })).not.toBeNull();
-    expect(removalDeltaCap({ org: "acme", entries: [] }, { managedTotal: 0 })).toBeNull();
-  });
-
-  it("guardrails see the count captured from the IMMEDIATELY preceding diff (per scope×cycle sequencing)", async () => {
-    // Two orgs through one runner call. The shared loop must run
-    // diff → guardrails per scope before moving on, so each org's guardrail
-    // divides by its own live count. big: 1 delete of 20 live (5%, passes).
-    // small: 2 deletes of 4 live (50%, blocks). If `small` read `big`'s stale
-    // count instead, 2/20 = 10% would slip through the 25% cap.
-    const liveByOrg: Record<string, LiveOrgState> = {
-      big: { members: Array.from({ length: 20 }, (_, i) => ({ username: `m${i}` })) },
-      small: { members: Array.from({ length: 4 }, (_, i) => ({ username: `s${i}` })) },
-    };
-    const perOrgCycle: Cycle = {
-      name: "members",
-      async fetchLive(_client, scopeId) {
-        return liveByOrg[scopeId]!;
+    const teamsCycle: Cycle = {
+      name: "teams",
+      async fetchLive() {
+        return live;
       },
       buildDesired(config: OrgConfig) {
-        return { members: config.members };
+        return { teams: config.teams };
       },
       async apply() {},
     };
-    const members = (names: string[]) => names.map((username) => ({ username }));
     const result = await runReconcile({
       config: {
         orgs: {
-          big: { owned: true, members: members(Array.from({ length: 19 }, (_, i) => `m${i}`)) },
-          small: { owned: true, members: members(["s0", "s1"]) },
+          acme: {
+            owned: ["team"],
+            teams: {
+              t0: {
+                members: Array.from({ length: 20 }, (_, i) => ({ username: `m${i}` })),
+              },
+            },
+          },
         },
       },
       client: mockClient(),
-      cycles: [perOrgCycle],
-      mode: "dry-run",
+      cycles: [teamsCycle],
+      mode: "apply",
     });
-    const byOrg = Object.fromEntries(result.cycles.map((c) => [c.org, c]));
-    expect(byOrg.big!.guardrails.ok).toBe(true);
-    const small = byOrg.small!;
-    if (small.guardrails.ok) throw new Error("expected small org to be capped");
-    expect(small.guardrails.diagnostics[0]!.message).toContain("2 of 4 live managed entries");
+    const cr = result.cycles[0]!;
+    expect(cr.guardrailBlocked).toBe(true);
+    if (cr.guardrails.ok) throw new Error("expected diagnostics");
+    expect(cr.guardrails.diagnostics[0]!.message).toContain("3 of 4 live team entries (75%)");
+  });
+
+  it("empty live keeps the cap armed on its per-type plan-relative fallback", async () => {
+    // Bootstrap: nothing live, so every per-type count is zero and the plan
+    // holds only creates — which the cap never counts, so the apply proceeds.
+    // Warden's diff cannot plan a delete of a type without live entries of
+    // that type (counts come from the same walk that emits the deletes), so a
+    // zero count coinciding with deletes is unreachable from here; chant's
+    // per-type plan-relative fallback stays as defense in depth.
+    const applied: string[] = [];
+    const result = await runReconcile({
+      config: cfg(["a", "b", "c"]),
+      client: mockClient(),
+      cycles: [membersCycle({}, applied)],
+      mode: "apply",
+      diffOptions: { isOwned: () => true },
+    });
+    const cr = result.cycles[0]!;
+    expect(cr.guardrails.ok).toBe(true);
+    expect(cr.guardrailBlocked).toBe(false);
+    expect(applied.sort()).toEqual(["a", "b", "c"]);
   });
 });

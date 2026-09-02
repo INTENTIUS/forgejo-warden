@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { countLiveManaged, diff } from "./diff.js";
+import { diff } from "./diff.js";
 import type { OrgConfig } from "../config/types.js";
 import type { LiveOrgState } from "./live.js";
 
@@ -121,17 +121,19 @@ describe("diff: teams — `previously:` renames directly (no `owned` required)",
   });
 });
 
-describe("countLiveManaged (removalDeltaCap's managedTotal denominator)", () => {
-  it("counts only collections the policy declares", () => {
+describe("diff: managedCounts (removalDeltaCap's per-type live denominators)", () => {
+  it("counts only collections the policy declares, keyed by resource type", () => {
     const live: LiveOrgState = {
       members: [{ username: "a" }, { username: "b" }],
       secrets: [{ name: "S1" }],
       variables: [{ name: "V1" }],
       webhooks: [{ url: "https://h.test" }],
     };
-    expect(countLiveManaged({}, live)).toBe(0);
-    expect(countLiveManaged({ members: [] }, live)).toBe(2);
-    expect(countLiveManaged({ members: [], secrets: [], variables: [], webhooks: [] }, live)).toBe(5);
+    expect(diff(ORG, {}, live).managedCounts).toEqual({});
+    expect(diff(ORG, { members: [] }, live).managedCounts).toEqual({ member: 2 });
+    expect(
+      diff(ORG, { members: [], secrets: [], variables: [], webhooks: [] }, live).managedCounts,
+    ).toEqual({ member: 2, "org-secret": 1, "org-variable": 1, "org-webhook": 1 });
   });
 
   it("counts nested slices only for parents present in both desired and live", () => {
@@ -140,24 +142,63 @@ describe("countLiveManaged (removalDeltaCap's managedTotal denominator)", () => 
         devs: { id: 1, members: [{ username: "a" }], repos: [{ name: "r" }] },
         ops: { id: 2, members: [{ username: "b" }] },
       },
+    };
+    // 2 live teams + devs' declared members (1) — ops' children undeclared,
+    // devs' repos undeclared.
+    expect(diff(ORG, { teams: { devs: { members: [] } } }, live).managedCounts).toEqual({
+      team: 2,
+      "team-member": 1,
+    });
+    // A declared parent with no live counterpart contributes nothing nested.
+    expect(diff(ORG, { teams: { fresh: { members: [] } } }, live).managedCounts).toEqual({
+      team: 2,
+    });
+  });
+
+  it("a `previously:` rename counts the old live team's nested entries", () => {
+    // diff walks live under the old key, so the denominator sees the renamed
+    // team's children — the old mirror counted zero nested entries here.
+    const live: LiveOrgState = {
+      teams: { "platform-eng": { id: 7, members: [{ username: "a" }], repos: [{ name: "r" }] } },
+    };
+    const d: OrgConfig = {
+      teams: {
+        platform: { previously: "platform-eng", members: [{ username: "a" }], repos: [] },
+      },
+    };
+    expect(diff(ORG, d, live).managedCounts).toEqual({
+      team: 1,
+      "team-member": 1,
+      "team-repo": 1,
+    });
+  });
+
+  it("never counts live repos (warden never deletes a repo); nested repo slices count", () => {
+    const live: LiveOrgState = {
       repos: {
-        svc: { branchProtection: [{ ruleName: "main" }], webhooks: [{ url: "u" }], secrets: [], variables: [{ name: "V" }] },
+        svc: {
+          branchProtection: [{ ruleName: "main" }],
+          webhooks: [{ url: "u" }],
+          secrets: [],
+          variables: [{ name: "V" }],
+        },
         other: { branchProtection: [{ ruleName: "main" }] },
       },
     };
-    // Teams: 2 live teams + devs' declared members (1) — ops' children undeclared.
-    expect(countLiveManaged({ teams: { devs: { members: [] } } }, live)).toBe(3);
-    // Repos: 2 live repos + svc's declared branchProtection (1) + variables (1).
+    // svc's declared branchProtection (1) + variables (1); webhooks/secrets
+    // undeclared; `other` undesired; NO "repo" key — live repos must not
+    // dilute any denominator.
     expect(
-      countLiveManaged({ repos: { svc: { branchProtection: [], variables: [] } } }, live),
-    ).toBe(4);
-    // A declared parent with no live counterpart contributes nothing nested.
-    expect(countLiveManaged({ teams: { fresh: { members: [] } } }, live)).toBe(2);
+      diff(ORG, { repos: { svc: { branchProtection: [], variables: [] } } }, live).managedCounts,
+    ).toEqual({ "branch-protection": 1, "repo-variable": 1 });
   });
 
   it("ignores the settings singleton and repoBaselines", () => {
     const live: LiveOrgState = { settings: { description: "x" }, repos: { a: {}, b: {} } };
-    expect(countLiveManaged({ settings: {}, repoBaselines: [{ name: "a" }] }, live)).toBe(0);
+    expect(
+      diff(ORG, { settings: { description: "x" }, repoBaselines: [{ name: "a" }] }, live)
+        .managedCounts,
+    ).toEqual({});
   });
 });
 
