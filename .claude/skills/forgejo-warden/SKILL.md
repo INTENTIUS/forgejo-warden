@@ -16,19 +16,21 @@ YAML policy. This skill is a pointer — do not restate the docs, read them:
 - [CLI.md](../../../CLI.md) — flags, config loading, exit codes, token scopes.
 - [CYCLES.md](../../../CYCLES.md) — what each of the 8 cycles reads and applies.
 
-Core rules:
+Safety rules (non-negotiable):
 
-- Dry-run is the default and safe: `forgejo-warden reconcile --config <policy>
-  --base-url <url> --token-env <VAR>` only reads and prints a plan.
-- **Never pass `--mode apply` until a human has reviewed the rendered plan.**
-  Show them the dry-run output first.
-- Deletes happen only in orgs the policy marks with `owned:` (see POLICY.md,
-  "Delete semantics"). Leave `owned` absent unless the operator explicitly asks
-  warden to remove live entries missing from the policy — and for a plan that
-  contains deletes, always dry-run and get human review before any apply.
-- Exit `1` means a guardrail blocked the apply (removal cap): stop and ask the
-  operator; do not reach for `--allow-guardrail-override` on your own. Exit `2`
+- `--mode dry-run` is the default and is safe to run: it only reads live
+  state and prints a plan. Start every task with a dry-run
+  (`forgejo-warden reconcile --config <policy> --base-url <url>
+  --token-env <VAR>`) and show the operator the plan.
+- Never pass `--mode apply` until a human has reviewed the rendered plan and
+  approved the specific change.
+- A guardrail block (exit 1) means stop and ask, not work around. Do not pass
+  `--allow-guardrail-override` without explicit human approval. Exit `2`
   is an argument/config error, `3` a runtime/apply failure.
+- Deletes happen only in orgs whose policy declares `owned` (`true`, or a
+  list of resource types — see POLICY.md, "Delete semantics"). Treat adding
+  `owned` as a destructive change: get explicit human approval first, then
+  dry-run and review the planned deletes with the operator before any apply.
 - The token comes from an env var via `--token-env`; never put it in argv or
   files.
 

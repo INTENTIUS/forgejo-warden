@@ -6,9 +6,9 @@ map that declares the desired state of each Forgejo organization. Everything els
 
 - Warden loads it via the `--config` path (see [CLI.md](CLI.md)).
 - Schema (authoritative): `src/config/types.ts` (`GovernanceConfig` / `OrgConfig`).
-- Selective-by-omission: **every field is optional, and an absent field is never
-  touched**. Warden will not read, diff, or modify an aspect of live state that
-  the policy does not mention. Declaring `settings: {description: ...}` manages
+- Selective-by-omission: an absent field or collection is never read for
+  mutation, diffed, or changed. This holds for every field, all of them
+  optional. Declaring `settings: {description: ...}` manages
   the description and nothing else.
 
 Each slice of the policy is consumed by exactly one reconcile cycle (see
@@ -16,16 +16,18 @@ Each slice of the policy is consumed by exactly one reconcile cycle (see
 
 ## Delete semantics (read this before trusting a plan)
 
-Warden's diff only proposes a `delete` for a live entry that is missing from the
-policy when an ownership predicate (`isOwned`) marks that entry's collection as
-warden-owned. Ownership is declared per org with the `owned:` field.
+Deletes are ownership-gated: the diff proposes deleting a live entry missing
+from the policy only when that entry's collection is marked owned (the
+`isOwned` predicate), and by default nothing is owned: a run creates and
+updates but never deletes. Ownership is declared per org with the `owned:`
+field.
 
-Absent or `false` is the default, and it means **no deletes are ever planned
-for that org**. Any live entry the policy doesn't mention is left alone
-whatever its type, and removing an entry from the policy stops managing it
-rather than removing it live. With `owned: true`, warden owns every resource
-collection it reconciles in that org, so a live entry missing from the policy
-is planned as a delete. With `owned: [type, ...]`, warden owns only the listed
+With `owned` absent or `false` (the default), any live entry the policy
+doesn't mention is left alone whatever its type, and removing an entry from
+the policy stops managing it rather than removing it live. Declaring
+`owned: true` on an org makes warden own every resource collection it
+reconciles there, so a live entry missing from the policy is planned as a
+delete; `owned: [type, ...]` limits ownership to the listed
 resource types. The type strings are the change-set entry types
 (`RESOURCE_TYPE_ORDER` in `src/reconcile/diff.ts`): `org-secret`,
 `org-variable`, `org-webhook`, `team`, `team-member`, `team-repo`, `member`,
@@ -35,11 +37,12 @@ list.
 
 When forgejo-warden is embedded as a library, a caller-supplied
 `diffOptions.isOwned` on `runReconcile` takes precedence over the policy's
-`owned` declarations. Whenever deletes are active, the `removalLiveCap`
-guardrail refuses an apply whose deletes exceed 25% of the live entries in the
-collections the policy declares (with a plan-relative fallback when nothing is
-live), and a team rename declared with `previously:` is a single update — it
-never counts as a delete.
+`owned` declarations. Owned deletes still run the guardrails before any
+apply: `removalLiveCap` refuses an apply whose deletes exceed 25% of the live
+managed entries in the collections the policy declares; with nothing live to
+measure against it falls back to chant's plan-relative `removalDeltaCap`
+(deletes over the plan's updates plus deletes). A team rename declared with
+`previously:` is a single update and never counts as a delete.
 
 ## A complete policy
 

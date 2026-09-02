@@ -18,15 +18,15 @@ package.json at build time).
 
 ## Flags
 
-| Flag | Required | Default | Meaning |
-|---|---|---|---|
-| `--config <path>` | yes | — | policy file (YAML or JSON; see below) |
-| `--mode dry-run\|apply` | no | `dry-run` | `dry-run` computes and prints plans; `apply` also mutates the instance (guardrails permitting) |
-| `--cycles <name[,name...]>` | no | all cycles | comma-separated subset of cycles to run, e.g. `--cycles org-settings,teams`. Unknown names exit 2 and list the known cycles |
-| `--base-url <url>` | one of the two | — | Forgejo instance URL, e.g. `https://forgejo.example.com` or `https://codeberg.org` (no trailing `/api`) |
-| `--base-url-env <VAR>` | one of the two | — | env var holding the instance URL instead of putting it on the command line |
-| `--token-env <VAR>` | yes | — | env var holding the Forgejo API token. The token itself never appears in argv |
-| `--allow-guardrail-override` | no | off | apply even when a guardrail trips (the plan still prints the guardrail block) |
+| Flag | Default | Meaning |
+|---|---|---|
+| `--config <path>` | **required** | policy file (YAML or JSON; see below) |
+| `--mode dry-run\|apply` | `dry-run` | `dry-run` computes and prints plans; `apply` also mutates the instance (guardrails permitting) |
+| `--cycles <name[,name...]>` | all cycles | comma-separated subset of cycles to run, e.g. `--cycles org-settings,teams`. Unknown names exit 2 and list the known cycles |
+| `--base-url <url>` | one of the two URL flags is **required** | Forgejo instance URL, e.g. `https://forgejo.example.com` or `https://codeberg.org` (no trailing `/api`) |
+| `--base-url-env <VAR>` | — | env var holding the instance URL instead of putting it on the command line |
+| `--token-env <VAR>` | **required** | env var holding the Forgejo API token. The token itself never appears in argv |
+| `--allow-guardrail-override` | off | apply even when a guardrail trips (the plan still prints the guardrail block) |
 
 Cycle names (see [CYCLES.md](CYCLES.md)): `org-settings`, `membership`, `teams`,
 `repo-settings`, `branch-protection`, `repo-baseline`, `secrets-variables`,
@@ -83,13 +83,14 @@ is not currently exposed as a flag).
 
 ## Guardrails
 
-The apply path runs one guardrail, `removalLiveCap`: it refuses an apply whose
-deletes exceed 25% of the LIVE entries in the collections the policy declares
-for that cycle, so a truncated or mistyped policy cannot mass-delete in one
-run. One stale delete in an otherwise converged plan still passes, where a
-plan-relative cap would count it as 100%. When nothing is live for the cycle
-it falls back to the plan-relative cap. Rename aliases (`previously:` on a
-team) are resolved first, so a rename does not count as a delete.
+The apply path runs one guardrail: `removalLiveCap` refuses an apply whose
+deletes exceed 25% of the live managed entries in the collections the policy
+declares; with nothing live to measure against it falls back to chant's
+plan-relative `removalDeltaCap` (deletes over the plan's updates plus
+deletes). A truncated or mistyped policy therefore cannot mass-delete in one
+run, while one stale delete in an otherwise converged plan still passes (a
+plan-relative cap alone would count it as 100%). Rename aliases (`previously:`
+on a team) are resolved first, so a rename does not count as a delete.
 `--allow-guardrail-override` applies anyway; use it deliberately.
 
 Deletes themselves are opt-in per org: the plan contains them only for orgs the
@@ -101,9 +102,9 @@ to block.
 
 | Code | Meaning |
 |---|---|
-| 0 | success (dry-run printed, or apply completed with no failures) |
-| 1 | a guardrail blocked an apply |
-| 2 | argument or config error (bad flag, missing env var, unparseable policy, unknown cycle) |
-| 3 | runtime error (API failure, failed apply entries, cycle errors) |
+| 0 | Success: the plan printed (dry-run), or apply completed with no failures. |
+| 1 | Guardrail block: apply mode, at least one guardrail tripped, and `--allow-guardrail-override` was not set. |
+| 2 | Argument or config error (unknown flag, unknown cycle, unreadable or invalid config, missing auth). |
+| 3 | Runtime error (API failure, an errored cycle, or failed apply entries). |
 
 In CI, treat 0 as pass and 1 as "needs a human"; treat 2 and 3 as failures.

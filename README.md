@@ -6,18 +6,36 @@
   <a href="https://www.npmjs.com/package/@intentius/forgejo-warden"><img src="https://img.shields.io/npm/v/@intentius/forgejo-warden" alt="npm"></a>
 </p>
 
-Keep your Forgejo org and repos in a declared state, with guardrails and drift
-correction. This is a sibling of
-[github-warden](https://github.com/INTENTIUS/github-warden), built on the shared
-reconcile primitive in
-[`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant). What this
-repo supplies is the Forgejo layer: a REST client for a self-hosted instance,
-the config and live-state types, and a Forgejo `diff()` with its reconcile
-cycles.
+**Keep your Forgejo org and repos in a declared state, with guardrails and
+drift correction.**
 
-See the [docs site](https://intentius.io/forgejo-warden/) for these pages
-rendered ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) ·
-[CI](CI.md) · [setup](SETUP.md)).
+Full documentation lives at
+[intentius.io/forgejo-warden](https://intentius.io/forgejo-warden/), with deep
+dives on these pages.
+
+- [Policy](POLICY.md)
+- [CLI](CLI.md)
+- [Cycles](CYCLES.md)
+- [CI pipelines](CI.md)
+- [Setup](SETUP.md)
+
+## Set up with an agent
+
+From a checkout, Claude Code picks up the skill in
+`.claude/skills/forgejo-warden` automatically. Other agents can install it with
+`npx skills add INTENTIUS/forgejo-warden`, or by copying the skill directory
+into `~/.claude/skills/`. Then paste this prompt, filling in the placeholders:
+
+```text
+Use the forgejo-warden skill in this repo to help me set up governance for my
+Forgejo org <ORG> on <BASE_URL>. My API token is in the <TOKEN_ENV> env var.
+Author a governance.yml policy for the org settings, teams, and repos I care
+about (interview me for the details), then run a dry-run reconcile and walk me
+through the plan. Do not apply anything.
+```
+
+The skill holds the agent to dry-run until you've reviewed the plan; deletes
+stay off entirely until you mark an org `owned` in the policy.
 
 ## What you need
 
@@ -28,43 +46,26 @@ rendered ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) ·
 - A Forgejo API token ([SETUP.md](SETUP.md) has the click-path and scopes; a
   dry-run needs only read). Any self-hosted Forgejo works, and so does
   [Codeberg](https://codeberg.org); point `--base-url` at the instance.
-- Node 20+.
+- Node 22+.
 
-About ten minutes to a first dry-run plan. To probe before cloning anything:
+About ten minutes gets you to a first dry-run plan. The quickest probe needs
+no clone at all:
 
 ```bash
-# Dry-run against your instance: reads only, prints a plan, changes nothing.
+# Dry-run: reads only, prints a plan, changes nothing.
 npx @intentius/forgejo-warden reconcile --config governance.yml --base-url https://forgejo.example.com --token-env FORGEJO_TOKEN --mode dry-run
 ```
 
 The [npm package](https://www.npmjs.com/package/@intentius/forgejo-warden) is
 there for pipelines; day-to-day authoring happens in the checkout.
 
-## Set up with an agent
-
-From a checkout, Claude Code picks up the skill in
-`.claude/skills/forgejo-warden/` automatically. It knows the policy format and
-the CLI, and it follows the safety rules: dry-run first, and deletes only in
-orgs marked `owned`. For other agents, run
-`npx skills add INTENTIUS/forgejo-warden` or copy the skill directory into
-`~/.claude/skills/`.
-
-Paste this, filling in the placeholders:
-
-```text
-Use the forgejo-warden skill in this repo to help me set up governance for my
-Forgejo org <ORG> on <BASE_URL>. My API token is in the <TOKEN_ENV> env var.
-Author a governance.yml policy for the org settings, teams, and repos I care
-about (interview me for the details), then run a dry-run reconcile and walk me
-through the plan. Do not apply anything.
-```
-
 ## What it reconciles
 
 You declare desired state in YAML (selective-by-omission: an absent field is
-never touched); warden diffs it against the live org and, in `apply` mode,
-converges it. Deletes are opt-in per org via `owned:` and guarded by a removal
-cap so a typo can't mass-delete ([POLICY.md](POLICY.md), "Delete semantics").
+never read, diffed, or touched); warden diffs it against the live org and, in
+`apply` mode, converges it. Deletes are opt-in per org via `owned:` and guarded
+by a removal cap so a typo can't mass-delete ([POLICY.md](POLICY.md), "Delete
+semantics").
 
 | Cycle | Reconciles |
 |-------|------------|
@@ -100,6 +101,14 @@ npm run e2e:down                    # compose down -v
 CI runs it on every push to main and nightly.
 
 ## How it differs from github-warden
+
+This is a sibling of
+[github-warden](https://github.com/INTENTIUS/github-warden), built on the
+shared reconcile primitive in
+[`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant). What this
+repo supplies is the Forgejo layer: a REST client for a self-hosted instance,
+the config and live-state types, and a Forgejo `diff()` with its reconcile
+cycles.
 
 The client takes a configurable instance base URL instead of a fixed API host,
 and auth is a plain Forgejo API token with no GitHub Apps or installation-token

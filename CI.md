@@ -1,10 +1,11 @@
 # Running warden in CI
 
-The natural home for the policy is a git repo, with warden run by CI. Run a
-dry-run on every pull request so the plan is visible before merge. An apply on
-every push to the default branch keeps a merged policy converging the org, and
-a scheduled run (apply, or dry-run if you prefer alerts over correction)
-catches out-of-band drift even when nobody edits the policy.
+The steady state for governance is a pipeline: dry-run the plan on every pull
+request, apply on the default branch, and a scheduled run to correct drift
+that happens between pushes. The dry-run makes the plan visible before merge,
+the apply keeps a merged policy converging the org, and the scheduled run
+(apply, or dry-run if you prefer alerts over correction) catches out-of-band
+drift even when nobody edits the policy.
 
 Exit codes make this easy to wire: 0 success, 1 guardrail block, 2 arg/config
 error, 3 runtime/apply failure ([CLI.md](CLI.md)). A guardrail block failing

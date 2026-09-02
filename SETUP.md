@@ -15,9 +15,9 @@ npm install -g @intentius/forgejo-warden
 forgejo-warden --help
 ```
 
-Node 20+ (the CLI uses the global `fetch`).
+Node 22+ (the CLI uses the global `fetch`).
 
-## Create an API token
+## Create a token
 
 Warden authenticates with a single Forgejo API token, sent as
 `Authorization: token ...`. The token's user must be an owner (or site admin) of
@@ -47,7 +47,7 @@ var (`--token-env`) and never from argv:
 export FORGEJO_TOKEN=<the token>
 ```
 
-## Base URL
+## Point at your instance
 
 `--base-url` is the instance root, no trailing `/api`:
 
@@ -92,7 +92,7 @@ Then grow the policy slice by slice (teams, repos, branch protection),
 checking the dry-run plan each time. [POLICY.md](POLICY.md) has a complete
 annotated example; [CLI.md](CLI.md) covers flags and exit codes.
 
-## A local sandbox (the e2e stack)
+## A disposable sandbox: the e2e stack
 
 The repo ships a hermetic throwaway Forgejo you can experiment against without
 touching a real instance: Forgejo 11 on sqlite, web installer skipped, no
