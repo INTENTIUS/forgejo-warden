@@ -5,6 +5,22 @@
 
 Keep your Forgejo org and repos in a declared state — reconcile, guardrails, drift correction.
 
+Docs: <https://intentius.io/forgejo-warden/> ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) · [CI](CI.md) · [setup](SETUP.md))
+
+## Set up with an agent
+
+This repo ships a Claude skill (`.claude/skills/forgejo-warden/`) that knows the
+policy format, the CLI, and the safety rules. From a clone, paste this into
+Claude Code (or any agent that reads repo skills), filling in the placeholders:
+
+```text
+Use the forgejo-warden skill in this repo to help me set up governance for my
+Forgejo org <ORG> on <BASE_URL>. My API token is in the <TOKEN_ENV> env var.
+Author a governance.yml policy for the org settings, teams, and repos I care
+about (interview me for the details), then run a dry-run reconcile and walk me
+through the plan. Do not apply anything.
+```
+
 ## Install
 
 ```bash
@@ -43,7 +59,7 @@ converges it — guarded by a removal cap so a typo can't mass-delete.
 ## Tests
 
 `npm test` runs the unit suite (mock-client, fully offline). The
-[e2e suite](e2e/) is **fully hermetic** — it stands up a throwaway Forgejo via
+[e2e suite](https://github.com/INTENTIUS/forgejo-warden/tree/main/e2e) is **fully hermetic** — it stands up a throwaway Forgejo via
 Docker Compose, mints an admin token, provisions its own org, exercises every
 cycle, and tears down (no external account or secrets):
 

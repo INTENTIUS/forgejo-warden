@@ -1,0 +1,32 @@
+site_name: forgejo-warden
+site_description: Keep your Forgejo org and repos in declared state — reconcile, guardrails, drift correction
+# The markdown lives at the repo root (for GitHub); `mkdocs-stage.sh` copies the curated
+# set into docs/ for the build. Run `just docs` (or the Pages workflow).
+docs_dir: docs
+site_dir: _site
+use_directory_urls: true
+
+repo_url: https://github.com/INTENTIUS/forgejo-warden
+repo_name: INTENTIUS/forgejo-warden
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+
+nav:
+  - Home: README.md
+  - Policy: POLICY.md
+  - CLI: CLI.md
+  - Cycles: CYCLES.md
+  - CI pipelines: CI.md
+  - Setup: SETUP.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences
