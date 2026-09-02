@@ -2,9 +2,11 @@ name: e2e
 
 # Fully hermetic end-to-end suite against a throwaway Docker Compose Forgejo
 # stack. Needs NO secrets — Forgejo is self-hostable, so CI stands one up, mints
-# an admin token, and the suite provisions + tears down its own org. Runs on push
-# to main, nightly, and on demand (kept off PRs to keep PR CI fast).
+# an admin token, and the suite provisions + tears down its own org. The sqlite
+# stack boots fast enough to gate every PR, so this runs on pull requests and
+# pushes to main, plus nightly and on demand.
 on:
+  pull_request:
   push:
     branches: [main]
   schedule:
