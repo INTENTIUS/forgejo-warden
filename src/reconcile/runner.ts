@@ -12,6 +12,13 @@
  * member-floor / self-lockout guardrails are GitHub-flavored and omitted; add a
  * Forgejo equivalent later only if meaningful.
  *
+ * The removal cap here is `removalLiveCap`, a warden-local check that divides
+ * deletes by the LIVE managed entry count (chant's `removalDeltaCap` divides by
+ * the plan's updates + deletes, so one stale delete in an otherwise converged
+ * cycle trips at 100%). The live count comes from `countLiveManaged` over the
+ * same declared slices the diff walks; when nothing is live the check delegates
+ * to chant's plan-relative cap.
+ *
  * Every warden cycle stamps a cross-provider governance verb
  * (`@intentius/chant/governance`); the shared runner copies it onto change-set
  * entries so Forgejo plans group by the same grammar as other providers'.
@@ -23,11 +30,17 @@ import {
   removalDeltaCap,
   resolveRenames,
 } from "@intentius/chant/reconcile";
-import type { Cycle as CoreCycle, ReconcileResult, DiffOptions } from "@intentius/chant/reconcile";
+import type {
+  ChangeSet,
+  Cycle as CoreCycle,
+  GuardrailDiagnostic,
+  ReconcileResult,
+  DiffOptions,
+} from "@intentius/chant/reconcile";
 import type { ForgejoClient } from "../auth/client.js";
 import type { GovernanceConfig, OrgConfig } from "../config/types.js";
 import type { LiveOrgState } from "./live.js";
-import { diff } from "./diff.js";
+import { diff, countLiveManaged } from "./diff.js";
 
 export { BudgetExhaustedError } from "@intentius/chant/reconcile";
 export type {
@@ -53,8 +66,46 @@ export interface RunReconcileOptions<TScope = unknown> {
   diffOptions?: DiffOptions;
   allowGuardrailOverride?: boolean;
   requestBudget?: number;
-  /** Max fraction of pre-existing entries deletable in one apply. Default 0.25. */
+  /** Max fraction of live managed entries deletable in one apply (`removalLiveCap`). Default 0.25. */
   removalDeltaCapFraction?: number;
+}
+
+/** Options for {@link removalLiveCap}. */
+export interface RemovalLiveCapOptions {
+  /** Max fraction of live managed entries that may be deleted. Must be in (0,1]. Default 0.25. */
+  maxFraction?: number;
+}
+
+/**
+ * Warden-local removal cap: refuse when deletes exceed `maxFraction` of the
+ * LIVE managed entries — the live-side count of the collections the policy
+ * declares for the cycle (`countLiveManaged`). Live-relative, unlike chant's
+ * `removalDeltaCap` (plan-relative: deletes / plan's updates + deletes), so one
+ * stale delete in an otherwise converged cycle no longer trips at 100%.
+ *
+ * `liveManagedTotal === 0` (nothing counted live for this cycle) delegates to
+ * chant's plan-relative cap, so a miscounted denominator can never disable the
+ * guardrail outright.
+ */
+export function removalLiveCap(
+  changeSet: ChangeSet,
+  liveManagedTotal: number,
+  opts: RemovalLiveCapOptions = {},
+): GuardrailDiagnostic | null {
+  if (liveManagedTotal <= 0) return removalDeltaCap(changeSet, opts);
+  const maxFraction = opts.maxFraction ?? 0.25;
+  const deletes = changeSet.entries.filter((e) => e.kind === "delete").length;
+  const fraction = deletes / liveManagedTotal;
+  if (fraction > maxFraction) {
+    return {
+      guardrail: "removalLiveCap",
+      message:
+        `${deletes} of ${liveManagedTotal} live managed entries (${Math.round(fraction * 100)}%) would be deleted, ` +
+        `exceeding the ${Math.round(maxFraction * 100)}% threshold. ` +
+        `Check for typos in config or raise maxFraction to proceed.`,
+    };
+  }
+  return null;
 }
 
 /**
@@ -80,6 +131,11 @@ export async function runReconcile<TScope = unknown>(
   opts: RunReconcileOptions<TScope>,
 ): Promise<ReconcileResult> {
   const maxFraction = opts.removalDeltaCapFraction ?? 0.25;
+  // `removalLiveCap`'s denominator, captured from the immediately preceding
+  // diff call. Chant's loop is strictly sequential per scope×cycle — diff runs,
+  // then guardrails run on that diff's change set before the next diff — so a
+  // single captured value can't be read stale (locked by a runner test).
+  let liveManagedTotal = 0;
   return coreRunReconcile<ForgejoClient, OrgConfig, LiveOrgState, TScope>({
     client: opts.client,
     scopes: opts.config.orgs,
@@ -90,13 +146,16 @@ export async function runReconcile<TScope = unknown>(
       const scoped: DiffOptions = dopts?.isOwned
         ? dopts
         : { ...dopts, isOwned: isOwnedFromConfig(opts.config.orgs[scopeId]?.owned) };
+      liveManagedTotal = countLiveManaged(desired, live);
       // Resolve `previously:` rename aliases in the change set itself, so the
       // plan and the apply see one update (the live id survives) rather than a
       // delete + create. Guardrails re-resolve internally; that is idempotent.
       return resolveRenames(diff(scopeId, desired, live, scoped));
     },
     guardrails: (changeSet) =>
-      runGuardrailChecks(changeSet, [(resolved) => removalDeltaCap(resolved, { maxFraction })]),
+      runGuardrailChecks(changeSet, [
+        (resolved) => removalLiveCap(resolved, liveManagedTotal, { maxFraction }),
+      ]),
     diffOptions: opts.diffOptions,
     allowGuardrailOverride: opts.allowGuardrailOverride,
     requestBudget: opts.requestBudget,

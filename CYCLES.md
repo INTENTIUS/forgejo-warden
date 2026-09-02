@@ -73,11 +73,14 @@ entries are keyed `{team}/{username}` and `{team}/{repo}`. Forgejo addresses
 teams by numeric id, so the apply path reads the id off the live snapshot; for
 child entries — which only know the team name — it resolves name to id via
 `GET /orgs/{org}/teams/search` and an exact match on the result (Forgejo has no
-by-name team endpoint). A team entry with `previously: <old-name>` matching a pending delete
-collapses into an update (a rename) instead of a delete plus a create, and the
-team id and its memberships survive. For the team itself the diff compares
-`description` and `permission` along with `canCreateOrgRepo`,
-`includesAllRepositories`, `units`.
+by-name team endpoint). A team entry with `previously: <old-name>` is an
+explicit rename: when a live team by the old name exists and none by the new
+name does, the diff plans a single update (the rename) against that live team.
+There is no delete plus create and no `owned` requirement, and the team id and
+its memberships survive. For the team itself the diff compares `description`
+and `permission` along with `canCreateOrgRepo`, `includesAllRepositories`, and
+`units` (compared as a set, since Forgejo does not guarantee unit order in
+responses).
 
 ## repo-settings
 

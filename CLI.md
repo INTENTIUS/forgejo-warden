@@ -83,11 +83,14 @@ is not currently exposed as a flag).
 
 ## Guardrails
 
-The apply path runs one guardrail, `removalDeltaCap`: it refuses an apply whose
-deletes exceed 25% of the pre-existing managed entries (deletes + updates), so a
-truncated or mistyped policy cannot mass-delete in one run. Rename aliases
-(`previously:` on a team) are resolved first, so a rename does not count as a
-delete. `--allow-guardrail-override` applies anyway; use it deliberately.
+The apply path runs one guardrail, `removalLiveCap`: it refuses an apply whose
+deletes exceed 25% of the LIVE entries in the collections the policy declares
+for that cycle, so a truncated or mistyped policy cannot mass-delete in one
+run. One stale delete in an otherwise converged plan still passes, where a
+plan-relative cap would count it as 100%. When nothing is live for the cycle
+it falls back to the plan-relative cap. Rename aliases (`previously:` on a
+team) are resolved first, so a rename does not count as a delete.
+`--allow-guardrail-override` applies anyway; use it deliberately.
 
 Deletes themselves are opt-in per org: the plan contains them only for orgs the
 policy marks with `owned:` (see [POLICY.md](POLICY.md), "Delete semantics").

@@ -130,21 +130,62 @@ describe("teamsCycle.apply — subresources resolve name → id", () => {
 });
 
 describe("teamsCycle — `previously:` rename", () => {
-  it("collapses delete + create into one PATCH that renames, keeping the live id", async () => {
-    const config: GovernanceConfig = {
-      orgs: {
-        acme: {
-          owned: true,
-          teams: { platform: { permission: "write", previously: "platform-eng" } },
-        },
+  const liveRoutes = {
+    "GET /orgs/acme/teams?limit=50&page=1": [{ id: 7, name: "platform-eng", permission: "write" }],
+    "GET /teams/7/members?limit=50&page=1": [],
+    "GET /teams/7/repos?limit=50&page=1": [],
+  };
+  const renameConfig = (owned: boolean): GovernanceConfig => ({
+    orgs: {
+      acme: {
+        ...(owned ? { owned: true } : {}),
+        teams: { platform: { permission: "write", previously: "platform-eng" } },
       },
-    };
+    },
+  });
+
+  it("renames in a NON-owned org: exactly one update, applied as one PATCH", async () => {
+    const client = makeClient(liveRoutes);
+    const result = await runReconcile({
+      config: renameConfig(false),
+      client,
+      cycles: [teamsCycle],
+      mode: "apply",
+    });
+    const cr = result.cycles[0]!;
+    expect(cr.counts).toEqual({ create: 0, delete: 0, update: 1 });
+    expect(cr.guardrailBlocked).toBe(false);
+    expect(cr.failed).toEqual([]);
+    // ONE PATCH carrying the new name against the old team's live id — no
+    // duplicate-team POST, no delete of the old team.
+    const writes = client.calls.filter((c) => c.method !== "GET");
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: "PATCH", path: "/teams/7", body: { name: "platform" } });
+  });
+
+  it("converges after the rename: live under the new name → empty plan", async () => {
     const client = makeClient({
-      "GET /orgs/acme/teams?limit=50&page=1": [{ id: 7, name: "platform-eng", permission: "write" }],
+      "GET /orgs/acme/teams?limit=50&page=1": [{ id: 7, name: "platform", permission: "write" }],
       "GET /teams/7/members?limit=50&page=1": [],
       "GET /teams/7/repos?limit=50&page=1": [],
     });
-    const result = await runReconcile({ config, client, cycles: [teamsCycle], mode: "apply" });
+    const result = await runReconcile({
+      config: renameConfig(false),
+      client,
+      cycles: [teamsCycle],
+      mode: "dry-run",
+    });
+    expect(result.cycles[0]!.counts).toEqual({ create: 0, delete: 0, update: 0 });
+  });
+
+  it("in an owned org the direct-update path still wins: one PATCH, no delete", async () => {
+    const client = makeClient(liveRoutes);
+    const result = await runReconcile({
+      config: renameConfig(true),
+      client,
+      cycles: [teamsCycle],
+      mode: "apply",
+    });
     const cr = result.cycles[0]!;
     expect(cr.counts).toMatchObject({ create: 0, delete: 0, update: 1 });
     expect(cr.guardrailBlocked).toBe(false);

@@ -4,7 +4,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { runReconcile, type Cycle } from "./runner.js";
+import { removalDeltaCap } from "@intentius/chant/reconcile";
+import type { ChangeSet } from "@intentius/chant/reconcile";
+import { removalLiveCap, runReconcile, type Cycle } from "./runner.js";
 import type { ForgejoClient } from "../auth/client.js";
 import type { OrgConfig } from "../config/types.js";
 import type { LiveOrgState } from "./live.js";
@@ -125,7 +127,7 @@ describe("runReconcile (Forgejo adapter)", () => {
     expect(result.cycles[0]!.counts.delete).toBe(0);
   });
 
-  it("removalDeltaCap blocks a mass-delete apply (guardrail reused from chant)", async () => {
+  it("removalLiveCap blocks a mass-delete apply", async () => {
     const applied: string[] = [];
     const live: LiveOrgState = { members: Array.from({ length: 10 }, (_, i) => ({ username: `m${i}` })) };
     const result = await runReconcile({
@@ -139,5 +141,99 @@ describe("runReconcile (Forgejo adapter)", () => {
     expect(cr.guardrailBlocked).toBe(true);
     expect(cr.guardrails.ok).toBe(false);
     expect(applied).toHaveLength(0);
+  });
+});
+
+describe("removalLiveCap (live-relative removal cap)", () => {
+  const tenLive: LiveOrgState = {
+    members: Array.from({ length: 10 }, (_, i) => ({ username: `m${i}` })),
+  };
+  const keep = (n: number) =>
+    cfg(Array.from({ length: n }, (_, i) => `m${i}`));
+
+  it("1 stale delete of 10 live passes (chant's plan-relative cap would trip at 100%)", async () => {
+    const applied: string[] = [];
+    const result = await runReconcile({
+      config: keep(9), // converged but for one stale delete: 1 of 10 live = 10%
+      client: mockClient(),
+      cycles: [membersCycle(tenLive, applied)],
+      mode: "apply",
+      diffOptions: { isOwned: () => true },
+    });
+    const cr = result.cycles[0]!;
+    expect(cr.guardrails.ok).toBe(true);
+    expect(cr.guardrailBlocked).toBe(false);
+    expect(applied).toEqual(["m9"]);
+  });
+
+  it("4 deletes of 10 live blocks (40% > 25%), naming live managed entries", async () => {
+    const applied: string[] = [];
+    const result = await runReconcile({
+      config: keep(6), // 4 of 10 live = 40%
+      client: mockClient(),
+      cycles: [membersCycle(tenLive, applied)],
+      mode: "apply",
+      diffOptions: { isOwned: () => true },
+    });
+    const cr = result.cycles[0]!;
+    expect(cr.guardrailBlocked).toBe(true);
+    if (cr.guardrails.ok) throw new Error("expected diagnostics");
+    expect(cr.guardrails.diagnostics[0]!.guardrail).toBe("removalLiveCap");
+    expect(cr.guardrails.diagnostics[0]!.message).toContain("4 of 10 live managed entries");
+    expect(applied).toHaveLength(0);
+  });
+
+  it("zero live managed entries falls back to chant's plan-relative removalDeltaCap", () => {
+    const changeSet: ChangeSet = {
+      org: "acme",
+      entries: [
+        { kind: "delete", resourceType: "member", key: "a", before: { username: "a" } },
+        { kind: "update", resourceType: "member", key: "b", before: {}, after: {}, fields: [] },
+      ],
+    };
+    expect(removalLiveCap(changeSet, 0)).toEqual(removalDeltaCap(changeSet));
+    expect(removalLiveCap(changeSet, 0, { maxFraction: 0.6 })).toEqual(
+      removalDeltaCap(changeSet, { maxFraction: 0.6 }),
+    );
+    expect(removalLiveCap({ org: "acme", entries: [] }, 0)).toBeNull();
+  });
+
+  it("guardrails see the count captured from the IMMEDIATELY preceding diff (per scope×cycle sequencing)", async () => {
+    // Two orgs through one runner call. The shared loop must run
+    // diff → guardrails per scope before moving on, so each org's guardrail
+    // divides by its own live count. big: 1 delete of 20 live (5%, passes).
+    // small: 2 deletes of 4 live (50%, blocks). If `small` read `big`'s stale
+    // count instead, 2/20 = 10% would slip through the 25% cap.
+    const liveByOrg: Record<string, LiveOrgState> = {
+      big: { members: Array.from({ length: 20 }, (_, i) => ({ username: `m${i}` })) },
+      small: { members: Array.from({ length: 4 }, (_, i) => ({ username: `s${i}` })) },
+    };
+    const perOrgCycle: Cycle = {
+      name: "members",
+      async fetchLive(_client, scopeId) {
+        return liveByOrg[scopeId]!;
+      },
+      buildDesired(config: OrgConfig) {
+        return { members: config.members };
+      },
+      async apply() {},
+    };
+    const members = (names: string[]) => names.map((username) => ({ username }));
+    const result = await runReconcile({
+      config: {
+        orgs: {
+          big: { owned: true, members: members(Array.from({ length: 19 }, (_, i) => `m${i}`)) },
+          small: { owned: true, members: members(["s0", "s1"]) },
+        },
+      },
+      client: mockClient(),
+      cycles: [perOrgCycle],
+      mode: "dry-run",
+    });
+    const byOrg = Object.fromEntries(result.cycles.map((c) => [c.org, c]));
+    expect(byOrg.big!.guardrails.ok).toBe(true);
+    const small = byOrg.small!;
+    if (small.guardrails.ok) throw new Error("expected small org to be capped");
+    expect(small.guardrails.diagnostics[0]!.message).toContain("2 of 4 live managed entries");
   });
 });

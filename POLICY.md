@@ -35,10 +35,11 @@ list.
 
 When forgejo-warden is embedded as a library, a caller-supplied
 `diffOptions.isOwned` on `runReconcile` takes precedence over the policy's
-`owned` declarations. Whenever deletes are active, the `removalDeltaCap`
-guardrail refuses an apply whose deletes exceed 25% of the pre-existing managed
-entries, and a team rename declared with `previously:` still collapses into an
-update instead of counting as a delete + create.
+`owned` declarations. Whenever deletes are active, the `removalLiveCap`
+guardrail refuses an apply whose deletes exceed 25% of the live entries in the
+collections the policy declares (with a plan-relative fallback when nothing is
+live), and a team rename declared with `previously:` is a single update — it
+never counts as a delete.
 
 ## A complete policy
 
@@ -245,7 +246,7 @@ new team; on an existing team they reconcile as separate child entries.
 | `units` | list of string | optional | enabled units, e.g. `repo.code`, `repo.issues`, `repo.pulls` |
 | `members` | list of `{username}` | optional | team members (presence) |
 | `repos` | list of `{name}` | optional | org repos the team has access to (presence) |
-| `previously` | string | optional | former team name; when the old name has a pending delete (an org that owns `team`), the plan collapses the rename into a single update that keeps the team id and its memberships |
+| `previously` | string | optional | former team name — an explicit rename intent, no `owned` needed: when a live team by the old name exists (and none by the new name), the plan is a single update that keeps the team id and its memberships |
 
 ### `repos{}` scalar fields + `topics` (`repo-settings` cycle)
 

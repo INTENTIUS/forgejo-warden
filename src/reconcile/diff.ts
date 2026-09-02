@@ -79,6 +79,51 @@ export const RESOURCE_TYPE_ORDER = [
 ] as const;
 
 // ---------------------------------------------------------------------------
+// Live managed count (removalLiveCap denominator)
+// ---------------------------------------------------------------------------
+
+/**
+ * Count the LIVE entries in the collections `desired` declares — the
+ * denominator for the runner's `removalLiveCap` guardrail. Mirrors `diff`'s
+ * declared-slice condition exactly: a collection contributes only when the
+ * desired config declares it, and nested collections (team members/repos, a
+ * repo's branch protections/webhooks/secrets/variables) contribute only for
+ * parents present in both desired and live — the same entries the diff walks.
+ * The settings singleton and `repoBaselines` (existence-only provisioning)
+ * never emit deletes and are excluded.
+ */
+export function countLiveManaged(desired: OrgConfig, live: LiveOrgState): number {
+  let n = 0;
+  if (desired.secrets !== undefined) n += (live.secrets ?? []).length;
+  if (desired.variables !== undefined) n += (live.variables ?? []).length;
+  if (desired.webhooks !== undefined) n += (live.webhooks ?? []).length;
+  if (desired.members !== undefined) n += (live.members ?? []).length;
+  if (desired.teams !== undefined) {
+    const liveTeams = live.teams ?? {};
+    n += Object.keys(liveTeams).length;
+    for (const [name, dt] of Object.entries(desired.teams)) {
+      const lt = liveTeams[name];
+      if (!lt) continue;
+      if (dt.members !== undefined) n += (lt.members ?? []).length;
+      if (dt.repos !== undefined) n += (lt.repos ?? []).length;
+    }
+  }
+  if (desired.repos !== undefined) {
+    const liveRepos = live.repos ?? {};
+    n += Object.keys(liveRepos).length;
+    for (const [name, dr] of Object.entries(desired.repos)) {
+      const lr = liveRepos[name];
+      if (!lr) continue;
+      if (dr.branchProtection !== undefined) n += (lr.branchProtection ?? []).length;
+      if (dr.webhooks !== undefined) n += (lr.webhooks ?? []).length;
+      if (dr.secrets !== undefined) n += (lr.secrets ?? []).length;
+      if (dr.variables !== undefined) n += (lr.variables ?? []).length;
+    }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------------------
 // diff — entry point
 // ---------------------------------------------------------------------------
 
@@ -156,7 +201,9 @@ function diffMembers(
 // Teams (+ embedded children on create; separate child entries on update)
 // ---------------------------------------------------------------------------
 
-const TEAM_FIELDS = ["description", "permission", "canCreateOrgRepo", "includesAllRepositories", "units"];
+// `units` is compared separately as a set — Forgejo does not guarantee a
+// stable order in team responses (compare `topics` / `statusCheckContexts`).
+const TEAM_FIELDS = ["description", "permission", "canCreateOrgRepo", "includesAllRepositories"];
 
 function diffTeams(
   desired: Record<string, TeamConfig> | undefined,
@@ -166,13 +213,39 @@ function diffTeams(
 ): void {
   if (desired === undefined) return;
 
+  // An explicit `previously:` declaration is an explicit rename intent: when a
+  // live team by the previous name exists and none by the new name does, plan
+  // ONE update (the rename) directly against the old live team — no
+  // delete + create pair, so no `owned` requirement. When both this and the
+  // owned delete + create + `resolveRenames` collapse could apply, this direct
+  // path wins (no delete or create is ever emitted for the pair).
+  const renamedFrom = new Map<string, string>(); // previous name → new name
   for (const [name, dt] of Object.entries(desired)) {
-    const lt = live[name];
+    if (typeof dt.previously === "string" && live[dt.previously] && !live[name]) {
+      renamedFrom.set(dt.previously, name);
+    }
+  }
+
+  for (const [name, dt] of Object.entries(desired)) {
+    const prev =
+      typeof dt.previously === "string" && renamedFrom.get(dt.previously) === name
+        ? dt.previously
+        : undefined;
+    const lt = prev !== undefined ? live[prev] : live[name];
     if (!lt) {
       out.push({ kind: "create", resourceType: "team", key: name, after: dt });
       continue;
     }
     const fields = diffFields(dt as Record<string, unknown>, lt as Record<string, unknown>, TEAM_FIELDS);
+    if (dt.units !== undefined) {
+      const d = [...dt.units].sort().join(",");
+      const l = [...(lt.units ?? [])].sort().join(",");
+      if (d !== l) fields.push({ field: "units", before: lt.units ?? [], after: dt.units });
+    }
+    if (prev !== undefined) {
+      // Same synthetic-field shape as chant's `resolveRenames` collapse.
+      fields.push({ field: "key", before: prev, after: name });
+    }
     if (fields.length > 0) {
       out.push({ kind: "update", resourceType: "team", key: name, before: lt, after: dt, fields });
     }
@@ -181,6 +254,7 @@ function diffTeams(
   }
 
   for (const name of Object.keys(live)) {
+    if (renamedFrom.has(name)) continue; // consumed by a direct rename update
     if (!Object.prototype.hasOwnProperty.call(desired, name) && opts.isOwned?.("team", name)) {
       out.push({ kind: "delete", resourceType: "team", key: name, before: live[name] });
     }
