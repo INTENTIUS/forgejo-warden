@@ -21,6 +21,10 @@ build:
 install:
     npm ci
 
+# Dogfood: audit our own config with chant (CI's `dogfood-audit` job)
+audit:
+    npx chant audit . --fail-on merge-worthy
+
 # Everything CI runs
 check: tsc test
 
