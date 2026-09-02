@@ -133,5 +133,5 @@ jobs:
 - **Dry-run plans on PRs.** The plan goes to the job log. If you want it on the
   PR itself, capture stdout and post it as a comment with your forge's API; the
   plan is plain text and stable-ordered, so diffs between runs are readable.
-- **Pinning.** `npx @intentius/forgejo-warden@0.1.1 ...` pins the version so a
+- **Pinning.** `npx @intentius/forgejo-warden@0.1.2 ...` pins the version so a
   new release can't change CI behavior unreviewed.

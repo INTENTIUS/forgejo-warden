@@ -8,7 +8,7 @@ The package ships a bundled CLI, `forgejo-warden`. Run it with npx or install it
 
 ```bash
 # one-off
-npx @intentius/forgejo-warden reconcile --help
+npx @intentius/forgejo-warden
 
 # or install
 npm install -g @intentius/forgejo-warden
