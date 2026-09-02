@@ -1,34 +1,39 @@
 # forgejo-warden
 
-[![ci](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/ci.yml/badge.svg)](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/ci.yml)
-[![e2e](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/e2e.yml/badge.svg)](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/e2e.yml)
-[![npm](https://img.shields.io/npm/v/@intentius/forgejo-warden)](https://www.npmjs.com/package/@intentius/forgejo-warden)
+<p>
+  <a href="https://github.com/INTENTIUS/forgejo-warden/actions/workflows/ci.yml"><img src="https://github.com/INTENTIUS/forgejo-warden/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/INTENTIUS/forgejo-warden/actions/workflows/e2e.yml"><img src="https://github.com/INTENTIUS/forgejo-warden/actions/workflows/e2e.yml/badge.svg" alt="e2e"></a>
+  <a href="https://www.npmjs.com/package/@intentius/forgejo-warden"><img src="https://img.shields.io/npm/v/@intentius/forgejo-warden" alt="npm"></a>
+</p>
 
-Keep your Forgejo org and repos in a declared state — reconcile, guardrails,
-drift correction. A sibling of
+Keep your Forgejo org and repos in a declared state, with guardrails and drift
+correction. This is a sibling of
 [github-warden](https://github.com/INTENTIUS/github-warden), built on the shared
 reconcile primitive in
-[`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant); this repo
-supplies the Forgejo layer: a REST client for a self-hosted instance, the
-config + live-state types, a Forgejo `diff()`, and the reconcile cycles.
+[`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant). What this
+repo supplies is the Forgejo layer: a REST client for a self-hosted instance,
+the config and live-state types, and a Forgejo `diff()` with its reconcile
+cycles.
 
-Docs: <https://intentius.io/forgejo-warden/> ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) · [CI](CI.md) · [setup](SETUP.md))
+See the [docs site](https://intentius.io/forgejo-warden/) for these pages
+rendered ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) ·
+[CI](CI.md) · [setup](SETUP.md)).
 
 ## What you need
 
 - A clone of this repo (`git clone https://github.com/INTENTIUS/forgejo-warden`).
   The agent skill, the annotated policy example, and the CI templates live in
-  it — and setup ends with a pipeline ([CI.md](CI.md)), so you'll have the repo
+  it, and setup ends with a pipeline ([CI.md](CI.md)), so you'll have the repo
   anyway.
 - A Forgejo API token ([SETUP.md](SETUP.md) has the click-path and scopes; a
   dry-run needs only read). Any self-hosted Forgejo works, and so does
-  [Codeberg](https://codeberg.org) — point `--base-url` at the instance.
+  [Codeberg](https://codeberg.org); point `--base-url` at the instance.
 - Node 22+.
 
 About ten minutes to a first dry-run plan. To probe before cloning anything:
 
 ```bash
-# Dry-run against your instance — reads only, prints a plan, changes nothing.
+# Dry-run against your instance: reads only, prints a plan, changes nothing.
 npx @intentius/forgejo-warden reconcile --config governance.yml --base-url https://forgejo.example.com --token-env FORGEJO_TOKEN --mode dry-run
 ```
 
@@ -38,10 +43,11 @@ there for pipelines; day-to-day authoring happens in the checkout.
 ## Set up with an agent
 
 From a checkout, Claude Code picks up the skill in
-`.claude/skills/forgejo-warden/` automatically — it knows the policy format,
-the CLI, and the safety rules (dry-run first, deletes only in orgs marked
-`owned`). Other agents: `npx skills add INTENTIUS/forgejo-warden`, or copy the
-skill directory into `~/.claude/skills/`.
+`.claude/skills/forgejo-warden/` automatically. It knows the policy format and
+the CLI, and it follows the safety rules: dry-run first, and deletes only in
+orgs marked `owned`. For other agents, run
+`npx skills add INTENTIUS/forgejo-warden` or copy the skill directory into
+`~/.claude/skills/`.
 
 Paste this, filling in the placeholders:
 
@@ -74,9 +80,10 @@ cap so a typo can't mass-delete ([POLICY.md](POLICY.md), "Delete semantics").
 ## Tests
 
 `npm test` runs the unit suite (mock-client, fully offline). The
-[e2e suite](https://github.com/INTENTIUS/forgejo-warden/tree/main/e2e) is **fully hermetic** — it stands up a throwaway Forgejo via
-Docker Compose, mints an admin token, provisions its own org, exercises every
-cycle, and tears down (no external account or secrets):
+[e2e suite](https://github.com/INTENTIUS/forgejo-warden/tree/main/e2e) is
+**fully hermetic**: it stands up a throwaway Forgejo via Docker Compose and
+mints an admin token, then provisions its own org and exercises every cycle
+before tearing down. No external account or secrets are needed:
 
 ```sh
 eval "$(npm run --silent e2e:up)"   # compose up + mint token
@@ -88,7 +95,10 @@ CI runs it on every push to main and nightly.
 
 ## How it differs from github-warden
 
-- **Self-hosted:** the client takes a configurable instance base URL, not a fixed API host.
-- **Auth:** a Forgejo API token — no GitHub Apps, no installation tokens.
-- **Membership is team-driven**, branch protection (not rulesets), plus webhooks.
-- Out of scope (no Forgejo equivalent): GHAS/security features, deployment environments, Dependabot, fine-grained PAT governance.
+The client takes a configurable instance base URL instead of a fixed API host,
+and auth is a plain Forgejo API token with no GitHub Apps or installation-token
+machinery. Membership is team-driven here, branch protection stands in for
+rulesets, and webhooks are in scope. Some GitHub surfaces have no Forgejo
+equivalent and stay out of scope; that covers GHAS and the other security
+features, deployment environments, and Dependabot, as well as fine-grained PAT
+governance.

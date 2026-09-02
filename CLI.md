@@ -1,8 +1,8 @@
 # CLI
 
-One subcommand: `reconcile`. It loads the policy, builds an authed client for
-your Forgejo instance, runs the selected cycles, and prints one plan per cycle
-per org.
+One subcommand: `reconcile`. It loads the policy and builds an authed client
+for your Forgejo instance, then runs the selected cycles and prints one plan
+per cycle per org.
 
 ```bash
 forgejo-warden reconcile \
@@ -44,9 +44,10 @@ Cycle names (see [CYCLES.md](CYCLES.md)): `org-settings`, `membership`, `teams`,
 
 Auth is a single Forgejo API token plus the instance base URL — there is no
 GitHub-Apps-style installation-token machinery. Requests go to
-`<base-url>/api/v1/...` with an `Authorization: token <token>` header, so the
-same invocation works against any self-hosted Forgejo, a Gitea instance with a
-compatible API, or Codeberg (`--base-url https://codeberg.org`).
+`<base-url>/api/v1/...` with an `Authorization: token <token>` header. The same
+invocation therefore works against any self-hosted Forgejo or Codeberg
+(`--base-url https://codeberg.org`), and against a Gitea instance with a
+compatible API.
 
 ### Token permissions
 
@@ -101,4 +102,4 @@ to block.
 | 2 | argument or config error (bad flag, missing env var, unparseable policy, unknown cycle) |
 | 3 | runtime error (API failure, failed apply entries, cycle errors) |
 
-In CI, treat 0 as pass, 1 as "needs a human", and 2/3 as failures.
+In CI, treat 0 as pass and 1 as "needs a human"; treat 2 and 3 as failures.

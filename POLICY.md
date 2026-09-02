@@ -4,7 +4,7 @@ The policy is the foundation of this tool: one YAML (or JSON) file with an `orgs
 map that declares the desired state of each Forgejo organization. Everything else
 (flags, tokens, cycles) just serves the policy. It is the one file you must author.
 
-- Loaded from the path given to `--config` (see [CLI.md](CLI.md)).
+- Warden loads it via the `--config` path (see [CLI.md](CLI.md)).
 - Schema (authoritative): `src/config/types.ts` (`GovernanceConfig` / `OrgConfig`).
 - Selective-by-omission: **every field is optional, and an absent field is never
   touched**. Warden will not read, diff, or modify an aspect of live state that
@@ -18,20 +18,20 @@ Each slice of the policy is consumed by exactly one reconcile cycle (see
 
 Warden's diff only proposes a `delete` for a live entry that is missing from the
 policy when an ownership predicate (`isOwned`) marks that entry's collection as
-warden-owned. Ownership is declared per org with the `owned:` field:
+warden-owned. Ownership is declared per org with the `owned:` field.
 
-- **Absent or `false` (the default): no deletes are planned for that org.** A
-  live team, member, webhook, secret, variable, or branch-protection rule the
-  policy doesn't mention is left alone, and removing an entry from the policy
-  stops managing it rather than removing it live.
-- **`owned: true`**: warden owns every resource collection it reconciles in
-  that org — a live entry missing from the policy is planned as a delete.
-- **`owned: [type, ...]`**: warden owns only the listed resource types. The
-  type strings are the change-set entry types (`RESOURCE_TYPE_ORDER` in
-  `src/reconcile/diff.ts`): `org-secret`, `org-variable`, `org-webhook`,
-  `team`, `team-member`, `team-repo`, `member`, `branch-protection`,
-  `repo-webhook`, `repo-secret`, `repo-variable`. Types that never emit deletes
-  (`org-settings`, `repo`, `repo-baseline`) are inert in this list.
+Absent or `false` is the default, and it means **no deletes are ever planned
+for that org**. Any live entry the policy doesn't mention is left alone
+whatever its type, and removing an entry from the policy stops managing it
+rather than removing it live. With `owned: true`, warden owns every resource
+collection it reconciles in that org, so a live entry missing from the policy
+is planned as a delete. With `owned: [type, ...]`, warden owns only the listed
+resource types. The type strings are the change-set entry types
+(`RESOURCE_TYPE_ORDER` in `src/reconcile/diff.ts`): `org-secret`,
+`org-variable`, `org-webhook`, `team`, `team-member`, `team-repo`, `member`,
+`branch-protection`, `repo-webhook`, `repo-secret`, `repo-variable`. Types that
+never emit deletes (`org-settings`, `repo`, `repo-baseline`) are inert in this
+list.
 
 When forgejo-warden is embedded as a library, a caller-supplied
 `diffOptions.isOwned` on `runReconcile` takes precedence over the policy's
@@ -42,7 +42,7 @@ update instead of counting as a delete + create.
 
 ## A complete policy
 
-Copy this, delete what you don't need, and edit it. Every field from
+Copy this and trim it to what you need. Every field from
 `src/config/types.ts` is shown. Comments name the cycle that consumes each slice.
 
 ```yaml
@@ -176,17 +176,22 @@ orgs:
 ```
 
 The smallest valid policy is `orgs: {}` (manages nothing). The smallest useful
-one declares a single slice, e.g. just `settings:` for one org.
+one declares a single slice, such as `settings:` for one org.
 
 ## Field reference
 
 ### `orgs{}` (top level)
+
+The whole document hangs off one key. Everything else nests under it.
 
 | Field | Type | Required / default | Cycle | Meaning |
 |---|---|---|---|---|
 | `orgs` | map of org name → org config | **required** | all | organizations to manage; the key is the Forgejo org name used in API paths |
 
 ### `orgs.<org>` (org config)
+
+Each entry under `orgs:` holds one organization's desired state. All of its
+fields are optional, per the selective-by-omission rule.
 
 | Field | Type | Required / default | Cycle | Meaning |
 |---|---|---|---|---|
@@ -200,9 +205,10 @@ one declares a single slice, e.g. just `settings:` for one org.
 | `variables` | list | optional | `secrets-variables` | org-level Actions variables (name + value) |
 | `webhooks` | list | optional | `webhooks` | org-level webhooks, keyed by `url` |
 
-### `settings` (cycle: `org-settings`)
+### `settings` (`org-settings` cycle)
 
-Applied as a partial `PATCH /orgs/{org}` with only the declared keys.
+This slice is applied as a partial `PATCH /orgs/{org}` with only the declared
+keys. Anything you leave out keeps its live value.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
@@ -213,19 +219,19 @@ Applied as a partial `PATCH /orgs/{org}` with only the declared keys.
 | `visibility` | `public` \| `limited` \| `private` | optional | org visibility. `limited` = visible to signed-in users only (Forgejo-specific; GitHub has no equivalent) |
 | `repoAdminChangeTeamAccess` | boolean | optional | whether repo admins may change team access to their repos |
 
-### `members[]` (cycle: `membership`)
+### `members[]` (`membership` cycle)
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
 | `username` | string | **required** | expected org member |
 
-Forgejo has no direct "add org member" endpoint — membership is a consequence of
+Forgejo has no direct "add org member" endpoint; membership is a consequence of
 team membership. This cycle therefore only removes members (an unlisted member,
-in an org that owns `member`) and fails loudly if the diff asks it to add one,
-pointing you at the `teams` cycle. There is no role field here; permission is
-expressed through teams.
+in an org that owns `member`) and fails loudly, with a pointer at the `teams`
+cycle, if the diff asks it to add one. There is no role field here; permission
+is expressed through teams.
 
-### `teams{}` (cycle: `teams`)
+### `teams{}` (`teams` cycle)
 
 Keyed by team name. On create, `members` and `repos` are applied inline with the
 new team; on an existing team they reconcile as separate child entries.
@@ -241,12 +247,12 @@ new team; on an existing team they reconcile as separate child entries.
 | `repos` | list of `{name}` | optional | org repos the team has access to (presence) |
 | `previously` | string | optional | former team name; a rename is resolved into an update instead of a delete + create (`resolveRenames` guardrail step) |
 
-### `repos{}` scalar fields + `topics` (cycle: `repo-settings`)
+### `repos{}` scalar fields + `topics` (`repo-settings` cycle)
 
-Applied as a partial `PATCH /repos/{org}/{repo}`; `topics` is a separate
-full-replacement `PUT /repos/{org}/{repo}/topics`. This cycle never creates a
-repo — a declared repo missing live surfaces as a failed entry ("this repo
-doesn't exist yet"); provision it with `repoBaselines`.
+Scalars are applied as a partial `PATCH /repos/{org}/{repo}`; `topics` is a
+separate full-replacement `PUT /repos/{org}/{repo}/topics`. This cycle never
+creates a repo. A declared repo missing live surfaces as a failed entry ("this
+repo doesn't exist yet"); provision it with `repoBaselines`.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
@@ -263,11 +269,11 @@ doesn't exist yet"); provision it with `repoBaselines`.
 | `defaultMergeStyle` | string | optional | `merge` \| `rebase` \| `rebase-merge` \| `squash` |
 | `topics` | list of string | optional | repo topics; compared order-insensitively, applied as full replacement |
 
-### `repos.<name>.branchProtection[]` (cycle: `branch-protection`)
+### `repos.<name>.branchProtection[]` (`branch-protection` cycle)
 
 Forgejo uses branch protections (its `branch_protections` API), not GitHub-style
-rulesets. Entries are keyed by `ruleName` (Forgejo's `rule_name` — a branch name
-or glob such as `release/*`).
+rulesets. Entries are keyed by `ruleName` (Forgejo's `rule_name`); the key
+holds a branch name or a glob such as `release/*`.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
@@ -280,10 +286,11 @@ or glob such as `release/*`).
 | `blockOnOutdatedBranch` | boolean | optional | block merge when the branch is behind |
 | `dismissStaleApprovals` | boolean | optional | dismiss approvals on new pushes |
 
-### `webhooks[]` — org scope and `repos.<name>.webhooks[]` (cycle: `webhooks`)
+### `webhooks[]` and `repos.<name>.webhooks[]` (`webhooks` cycle)
 
-Keyed by `url`. Forgejo addresses a hook by numeric id internally; warden tracks
-the live id for you and updates/deletes by it.
+Both the org-level list and the per-repo list share this shape, keyed by
+`url`. Forgejo addresses a hook by numeric id internally; warden tracks the
+live id for you and updates or deletes by it.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
@@ -294,30 +301,35 @@ the live id for you and updates/deletes by it.
 | `active` | boolean | optional | hook enabled |
 | `branchFilter` | string | optional | branch filter glob |
 
-### `secrets[]` — org scope and `repos.<name>.secrets[]` (cycle: `secrets-variables`)
+### `secrets[]` and `repos.<name>.secrets[]` (`secrets-variables` cycle)
+
+Secrets are write-only in the Forgejo API, so warden reconciles **presence
+only**. A listed secret missing live is created, and its value comes from the
+environment variable `FORGEJO_SECRET_<NAME>` at apply time (an empty placeholder
+is written if that variable is unset; set the real value out-of-band). Values
+are never read back or diffed. A changed secret value is therefore invisible
+to warden.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
 | `name` | string | **required** (identity key) | Actions secret name |
 
-Secrets are write-only in the Forgejo API, so warden reconciles **presence
-only**: a listed secret missing live is created, and its value comes from the
-environment variable `FORGEJO_SECRET_<NAME>` at apply time (an empty placeholder
-is written if that variable is unset — set the real value out-of-band). Values
-are never read back or diffed, so warden cannot detect a changed secret value.
+### `variables[]` and `repos.<name>.variables[]` (`secrets-variables` cycle)
 
-### `variables[]` — org scope and `repos.<name>.variables[]` (cycle: `secrets-variables`)
+Variables differ from secrets in that their values can be read back, so a
+declared value gets drift-corrected on every run. The same fields work at org
+and repo scope.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
 | `name` | string | **required** (identity key) | Actions variable name |
 | `value` | string | optional | desired value. Declared: reconciled fully (drift is corrected). Omitted: presence only; a create writes an empty string |
 
-### `repoBaselines[]` (cycle: `repo-baseline`)
+### `repoBaselines[]` (`repo-baseline` cycle)
 
-Existence-only provisioning: a listed repo missing from the org is created;
-existing repos are never updated or deleted by this cycle. Pair a baseline with
-an entry under `repos:` to also manage its settings.
+This slice is existence-only provisioning: a listed repo missing from the org
+is created, and existing repos are never updated or deleted by this cycle. Pair
+a baseline with an entry under `repos:` to also manage its settings.
 
 | Field | Type | Required / default | Meaning |
 |---|---|---|---|
@@ -327,7 +339,8 @@ an entry under `repos:` to also manage its settings.
 
 ## What a plan looks like
 
-`--mode dry-run` (the default) prints one plan per cycle per org, listing
-creates, updates (with field-level before/after), and deletes (in orgs marked
-`owned`), in a stable order. Nothing is written. `--mode apply` performs the same diff,
-runs the guardrails, then applies each entry — see [CLI.md](CLI.md).
+`--mode dry-run` (the default) prints one plan per cycle per org in a stable
+order, listing creates and updates (with field-level before/after) as well as
+deletes in orgs marked `owned`. Nothing is written. `--mode apply` performs the
+same diff, runs the guardrails, and then applies each entry; see
+[CLI.md](CLI.md).

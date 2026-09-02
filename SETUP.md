@@ -25,7 +25,7 @@ every org the policy manages.
 
 In the Forgejo web UI:
 
-1. Avatar menu → **Settings** → **Applications**.
+1. Avatar menu > **Settings** > **Applications**.
 2. Under **Manage access tokens**, name the token (e.g. `forgejo-warden`).
 3. Select scopes. For a dry-run, read access to `organization` and `repository`
    is enough. For apply, grant read-and-write on `organization` and
@@ -40,8 +40,8 @@ On a self-hosted instance you can also mint one from the CLI:
 forgejo admin user generate-access-token --username <admin> --scopes all --raw
 ```
 
-Export it into the environment — warden only ever reads the token from an env
-var (`--token-env`), never from argv:
+Export it into the environment; warden only ever reads the token from an env
+var (`--token-env`) and never from argv:
 
 ```bash
 export FORGEJO_TOKEN=<the token>
@@ -60,7 +60,7 @@ Requests resolve to `<base-url>/api/v1/...`.
 ## First dry-run
 
 Write a minimal policy that only reads what you already have. Start with one
-slice — say, org settings:
+slice, say org settings:
 
 ```yaml
 # governance.yml
@@ -70,7 +70,7 @@ orgs:
       description: Managed by forgejo-warden
 ```
 
-Run it (dry-run is the default; nothing is written):
+Run it. Dry-run is the default, so nothing gets written:
 
 ```bash
 forgejo-warden reconcile \
@@ -88,7 +88,7 @@ forgejo-warden reconcile --config governance.yml \
   --mode apply
 ```
 
-Then grow the policy slice by slice — teams, repos, branch protection —
+Then grow the policy slice by slice (teams, repos, branch protection),
 checking the dry-run plan each time. [POLICY.md](POLICY.md) has a complete
 annotated example; [CLI.md](CLI.md) covers flags and exit codes.
 
