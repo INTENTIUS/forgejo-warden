@@ -56,8 +56,23 @@ export interface RunReconcileOptions<TScope = unknown> {
 }
 
 /**
+ * Derive an ownership predicate from an org's `owned` declaration.
+ * Absent/`false` → `undefined` (deletes never emitted, the default);
+ * `true` → warden owns every collection; a string list → only those types.
+ */
+function isOwnedFromConfig(owned: OrgConfig["owned"]): DiffOptions["isOwned"] {
+  if (owned === true) return () => true;
+  if (Array.isArray(owned)) return (type) => owned.includes(type);
+  return undefined;
+}
+
+/**
  * Run the Forgejo governance reconcile loop, delegating to the shared runner
  * with warden's `diff` (org name as scope id) and guardrails wired in.
+ *
+ * Deletes are ownership-gated per org: a caller-supplied `diffOptions.isOwned`
+ * wins; otherwise the predicate is derived from that org's `owned` declaration
+ * in the policy (absent → no deletes, the safe default).
  */
 export async function runReconcile<TScope = unknown>(
   opts: RunReconcileOptions<TScope>,
@@ -69,7 +84,12 @@ export async function runReconcile<TScope = unknown>(
     cycles: opts.cycles,
     scope: opts.scope,
     mode: opts.mode,
-    diff: (scopeId, desired, live, dopts) => diff(scopeId, desired, live, dopts),
+    diff: (scopeId, desired, live, dopts) => {
+      const scoped: DiffOptions = dopts?.isOwned
+        ? dopts
+        : { ...dopts, isOwned: isOwnedFromConfig(opts.config.orgs[scopeId]?.owned) };
+      return diff(scopeId, desired, live, scoped);
+    },
     guardrails: (changeSet) =>
       runGuardrailChecks(changeSet, [(resolved) => removalDeltaCap(resolved, { maxFraction })]),
     diffOptions: opts.diffOptions,

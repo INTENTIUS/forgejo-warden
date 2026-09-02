@@ -60,6 +60,71 @@ describe("runReconcile (Forgejo adapter)", () => {
     expect(applied.sort()).toEqual(["a", "b"]);
   });
 
+  it("derives isOwned from `owned: true` — a live-only entry becomes a delete", async () => {
+    const live: LiveOrgState = { members: [{ username: "a" }, { username: "b" }] };
+    const result = await runReconcile({
+      config: { orgs: { acme: { owned: true, members: [{ username: "a" }] } } },
+      client: mockClient(),
+      cycles: [membersCycle(live, [])],
+      mode: "dry-run",
+    });
+    expect(result.cycles[0]!.counts.delete).toBe(1);
+  });
+
+  it("absent `owned` yields no deletes (current default preserved)", async () => {
+    const live: LiveOrgState = { members: [{ username: "a" }, { username: "b" }] };
+    const result = await runReconcile({
+      config: cfg(["a"]),
+      client: mockClient(),
+      cycles: [membersCycle(live, [])],
+      mode: "dry-run",
+    });
+    expect(result.cycles[0]!.counts.delete).toBe(0);
+  });
+
+  it("`owned: [types]` unlocks deletes only for the listed resource types", async () => {
+    const applied: string[] = [];
+    const orgCycle: Cycle = {
+      name: "org",
+      async fetchLive() {
+        return {
+          members: [{ username: "a" }, { username: "b" }],
+          teams: { stale: { description: "live-only team" } },
+        };
+      },
+      buildDesired(config: OrgConfig) {
+        return { members: config.members, teams: config.teams };
+      },
+      async apply(_client, entry) {
+        applied.push(`${entry.kind}:${entry.resourceType}:${entry.key}`);
+      },
+    };
+    const result = await runReconcile({
+      config: {
+        orgs: { acme: { owned: ["member"], members: [{ username: "a" }], teams: {} } },
+      },
+      client: mockClient(),
+      cycles: [orgCycle],
+      mode: "apply",
+      removalDeltaCapFraction: 1,
+    });
+    expect(result.cycles[0]!.counts.delete).toBe(1);
+    expect(applied).toContain("delete:member:b");
+    expect(applied.filter((a) => a.includes(":team:"))).toHaveLength(0);
+  });
+
+  it("caller-supplied diffOptions.isOwned wins over the org's `owned` declaration", async () => {
+    const live: LiveOrgState = { members: [{ username: "a" }, { username: "b" }] };
+    const result = await runReconcile({
+      config: { orgs: { acme: { owned: true, members: [{ username: "a" }] } } },
+      client: mockClient(),
+      cycles: [membersCycle(live, [])],
+      mode: "dry-run",
+      diffOptions: { isOwned: () => false },
+    });
+    expect(result.cycles[0]!.counts.delete).toBe(0);
+  });
+
   it("removalDeltaCap blocks a mass-delete apply (guardrail reused from chant)", async () => {
     const applied: string[] = [];
     const live: LiveOrgState = { members: Array.from({ length: 10 }, (_, i) => ({ username: `m${i}` })) };

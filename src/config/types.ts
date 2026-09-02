@@ -160,6 +160,23 @@ export interface RepoConfig {
 
 /** Desired state for a single Forgejo organization. Absent fields are not managed. */
 export interface OrgConfig {
+  /**
+   * Delete opt-in: which resource collections warden OWNS in this org.
+   *
+   * - Absent or `false` (the default): no deletes are planned for this org — a
+   *   live entry missing from the policy is left alone (selective-by-omission).
+   * - `true`: warden owns every resource collection it reconciles here, so a
+   *   live entry missing from the policy is planned as a delete.
+   * - A string list: warden owns only the listed resource types. Type strings
+   *   are the change-set entry types (`RESOURCE_TYPE_ORDER` in
+   *   `src/reconcile/diff.ts`), e.g. `"member"`, `"team"`, `"team-member"`,
+   *   `"team-repo"`, `"branch-protection"`, `"org-webhook"`, `"repo-webhook"`,
+   *   `"org-secret"`, `"repo-secret"`, `"org-variable"`, `"repo-variable"`.
+   *
+   * A caller-supplied `diffOptions.isOwned` (library embedding) takes
+   * precedence over this declaration.
+   */
+  owned?: boolean | string[];
   settings?: OrgSettings;
   members?: MemberConfig[];
   teams?: Record<string, TeamConfig>;

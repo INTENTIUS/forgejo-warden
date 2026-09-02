@@ -11,9 +11,12 @@ Shared behavior:
   desired state, so the cycle proposes nothing for it.
 - **Deletes are ownership-gated.** The diff emits a `delete` for a live entry
   missing from the policy only when an `isOwned` predicate says warden owns it.
-  The CLI wires no such predicate, so CLI runs never emit deletes; the delete
-  behavior described per cycle below applies when forgejo-warden is embedded as
-  a library with `diffOptions.isOwned` set. See [POLICY.md](POLICY.md).
+  The predicate comes from the org's `owned:` declaration in the policy —
+  absent means never delete (the default), `true` means every collection, a
+  list means only those resource types — so the per-cycle delete behavior below
+  applies only in orgs marked `owned`. A library embedding can instead pass
+  `diffOptions.isOwned` to `runReconcile`, which takes precedence. See
+  [POLICY.md](POLICY.md), "Delete semantics".
 - **Budget-aware.** Every API request charges a shared budget (default 1000 per
   run). On exhaustion the run stops cleanly and reports deferred cycles/entries
   instead of failing mid-apply. List endpoints paginate at 50 per page; each
@@ -51,8 +54,8 @@ Org member inventory. **Remove-only by design.**
   (the run continues; the entry lands in the cycle's `failed` list). Updates are
   impossible (a member has no fields).
 - Practical upshot: use `teams.<name>.members` to add people; use the
-  `members:` list to assert the expected roster and (with deletes active)
-  remove stragglers who are no longer in any declared team.
+  `members:` list to assert the expected roster and (in an org that owns
+  `member`) remove stragglers who are no longer in any declared team.
 
 ## teams
 
@@ -147,7 +150,8 @@ Forgejo Actions secrets and variables, at org and repo scope.
 - Keying: `name` (prefixed by repo for repo scope).
 - Secrets quirk: the Forgejo API is write-only for secret values, so warden
   reconciles **presence only** — it lists names, creates missing secrets, and
-  (with deletes active) removes unlisted ones, but never reads or diffs a value.
+  (in an org that owns the secret types) removes unlisted ones, but never reads
+  or diffs a value.
   On create the value comes from the environment variable
   `FORGEJO_SECRET_<NAME>` at apply time; if unset, an empty placeholder is
   written and the operator is expected to set the real value out-of-band. A
@@ -174,5 +178,5 @@ Org and repo webhooks, keyed by URL.
 - Compared fields: `type`, `contentType`, `active`, `branchFilter`, plus
   order-insensitive `events`.
 - Changing a hook's `url` changes its identity: the plan shows a create for the
-  new URL (and, with deletes active, a delete for the old one) — there is no
-  `previously:` alias for webhooks.
+  new URL (and, in an org that owns the webhook types, a delete for the old
+  one) — there is no `previously:` alias for webhooks.

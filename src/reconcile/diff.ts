@@ -57,7 +57,11 @@ export { summarizeChangeSet, renderChangeSet } from "@intentius/chant/reconcile"
 // Stable ordering
 // ---------------------------------------------------------------------------
 
-const RESOURCE_TYPE_ORDER = [
+/**
+ * Stable plan ordering — also the authoritative list of change-set resource
+ * types, referenced by `OrgConfig.owned` (a policy's per-org delete opt-in).
+ */
+export const RESOURCE_TYPE_ORDER = [
   "org-settings",
   "org-secret",
   "org-variable",

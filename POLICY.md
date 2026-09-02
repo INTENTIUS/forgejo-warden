@@ -17,15 +17,28 @@ Each slice of the policy is consumed by exactly one reconcile cycle (see
 ## Delete semantics (read this before trusting a plan)
 
 Warden's diff only proposes a `delete` for a live entry that is missing from the
-policy when an ownership predicate (`isOwned`) marks that entry as warden-owned.
-The CLI currently passes no ownership predicate, so **CLI runs never emit
-deletes**: a live team, member, webhook, secret, variable, or branch-protection
-rule that the policy doesn't mention is left alone, and removing an entry from
-the policy stops managing it rather than removing it live. The per-cycle delete
-paths documented in [CYCLES.md](CYCLES.md) exist and activate when forgejo-warden
-is embedded as a library with `diffOptions.isOwned` supplied to `runReconcile`.
-When deletes are active, the `removalDeltaCap` guardrail refuses an apply whose
-deletes exceed 25% of the pre-existing managed entries.
+policy when an ownership predicate (`isOwned`) marks that entry's collection as
+warden-owned. Ownership is declared per org with the `owned:` field:
+
+- **Absent or `false` (the default): no deletes are planned for that org.** A
+  live team, member, webhook, secret, variable, or branch-protection rule the
+  policy doesn't mention is left alone, and removing an entry from the policy
+  stops managing it rather than removing it live.
+- **`owned: true`**: warden owns every resource collection it reconciles in
+  that org — a live entry missing from the policy is planned as a delete.
+- **`owned: [type, ...]`**: warden owns only the listed resource types. The
+  type strings are the change-set entry types (`RESOURCE_TYPE_ORDER` in
+  `src/reconcile/diff.ts`): `org-secret`, `org-variable`, `org-webhook`,
+  `team`, `team-member`, `team-repo`, `member`, `branch-protection`,
+  `repo-webhook`, `repo-secret`, `repo-variable`. Types that never emit deletes
+  (`org-settings`, `repo`, `repo-baseline`) are inert in this list.
+
+When forgejo-warden is embedded as a library, a caller-supplied
+`diffOptions.isOwned` on `runReconcile` takes precedence over the policy's
+`owned` declarations. Whenever deletes are active, the `removalDeltaCap`
+guardrail refuses an apply whose deletes exceed 25% of the pre-existing managed
+entries, and a team rename declared with `previously:` still collapses into an
+update instead of counting as a delete + create.
 
 ## A complete policy
 
@@ -36,6 +49,15 @@ Copy this, delete what you don't need, and edit it. Every field from
 orgs:
   # One entry per Forgejo organization, keyed by org name.
   acme:
+
+    # ----- delete opt-in (consulted by every cycle's diff) -----
+    # Which resource collections warden OWNS in this org. Absent or false
+    # (the default): the plan never contains deletes for this org. true:
+    # warden owns everything it reconciles here, so live entries missing from
+    # this policy are planned as deletes. Or list specific resource types:
+    #   owned: [team, team-member, org-webhook]
+    # See "Delete semantics" above for the type strings.
+    owned: false
 
     # ----- org-settings cycle: PATCH /orgs/{org} (partial update) -----
     settings:
@@ -48,9 +70,9 @@ orgs:
 
     # ----- membership cycle: org member inventory -----
     # Forgejo org membership is team-driven: there is no "add org member" API.
-    # This cycle can only REMOVE members (and only when deletes are active, see
-    # above); to add someone, put them in a team below. Declaring this list
-    # asserts "these are the members I expect".
+    # This cycle can only REMOVE members (and only in an org that owns
+    # `member`, see `owned:` above); to add someone, put them in a team below.
+    # Declaring this list asserts "these are the members I expect".
     members:
       - username: alice
       - username: bob
@@ -168,6 +190,7 @@ one declares a single slice, e.g. just `settings:` for one org.
 
 | Field | Type | Required / default | Cycle | Meaning |
 |---|---|---|---|---|
+| `owned` | boolean or list of type strings | optional; default absent (no deletes) | all | delete opt-in: which resource collections warden owns in this org — see "Delete semantics" above |
 | `settings` | object | optional | `org-settings` | org-level settings (below) |
 | `members` | list | optional | `membership` | expected org members (presence; removal-only, see below) |
 | `teams` | map of name → team | optional | `teams` | teams with members and repo access |
@@ -198,7 +221,7 @@ Applied as a partial `PATCH /orgs/{org}` with only the declared keys.
 
 Forgejo has no direct "add org member" endpoint — membership is a consequence of
 team membership. This cycle therefore only removes members (an unlisted member,
-when deletes are active) and fails loudly if the diff asks it to add one,
+in an org that owns `member`) and fails loudly if the diff asks it to add one,
 pointing you at the `teams` cycle. There is no role field here; permission is
 expressed through teams.
 
@@ -305,6 +328,6 @@ an entry under `repos:` to also manage its settings.
 ## What a plan looks like
 
 `--mode dry-run` (the default) prints one plan per cycle per org, listing
-creates, updates (with field-level before/after), and deletes (when active),
-in a stable order. Nothing is written. `--mode apply` performs the same diff,
+creates, updates (with field-level before/after), and deletes (in orgs marked
+`owned`), in a stable order. Nothing is written. `--mode apply` performs the same diff,
 runs the guardrails, then applies each entry — see [CLI.md](CLI.md).

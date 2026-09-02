@@ -85,9 +85,10 @@ truncated or mistyped policy cannot mass-delete in one run. Rename aliases
 (`previously:` on a team) are resolved first, so a rename does not count as a
 delete. `--allow-guardrail-override` applies anyway; use it deliberately.
 
-Note that CLI runs currently never emit deletes at all (no ownership predicate
-is wired — see [POLICY.md](POLICY.md), "Delete semantics"), so this guardrail is
-a safety net for embedders today.
+Deletes themselves are opt-in per org: the plan contains them only for orgs the
+policy marks with `owned:` (see [POLICY.md](POLICY.md), "Delete semantics").
+For an org without `owned`, plans never contain deletes and the cap has nothing
+to block.
 
 ## Exit codes
 

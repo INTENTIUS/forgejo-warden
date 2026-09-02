@@ -2,16 +2,48 @@
 
 [![ci](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/ci.yml/badge.svg)](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/ci.yml)
 [![e2e](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/e2e.yml/badge.svg)](https://github.com/INTENTIUS/forgejo-warden/actions/workflows/e2e.yml)
+[![npm](https://img.shields.io/npm/v/@intentius/forgejo-warden)](https://www.npmjs.com/package/@intentius/forgejo-warden)
 
-Keep your Forgejo org and repos in a declared state — reconcile, guardrails, drift correction.
+Keep your Forgejo org and repos in a declared state — reconcile, guardrails,
+drift correction. A sibling of
+[github-warden](https://github.com/INTENTIUS/github-warden), built on the shared
+reconcile primitive in
+[`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant); this repo
+supplies the Forgejo layer: a REST client for a self-hosted instance, the
+config + live-state types, a Forgejo `diff()`, and the reconcile cycles.
 
 Docs: <https://intentius.io/forgejo-warden/> ([policy](POLICY.md) · [CLI](CLI.md) · [cycles](CYCLES.md) · [CI](CI.md) · [setup](SETUP.md))
 
+## What you need
+
+- A clone of this repo (`git clone https://github.com/INTENTIUS/forgejo-warden`).
+  The agent skill, the annotated policy example, and the CI templates live in
+  it — and setup ends with a pipeline ([CI.md](CI.md)), so you'll have the repo
+  anyway.
+- A Forgejo API token ([SETUP.md](SETUP.md) has the click-path and scopes; a
+  dry-run needs only read). Any self-hosted Forgejo works, and so does
+  [Codeberg](https://codeberg.org) — point `--base-url` at the instance.
+- Node 22+.
+
+About ten minutes to a first dry-run plan. To probe before cloning anything:
+
+```bash
+# Dry-run against your instance — reads only, prints a plan, changes nothing.
+npx @intentius/forgejo-warden reconcile --config governance.yml --base-url https://forgejo.example.com --token-env FORGEJO_TOKEN --mode dry-run
+```
+
+The [npm package](https://www.npmjs.com/package/@intentius/forgejo-warden) is
+there for pipelines; day-to-day authoring happens in the checkout.
+
 ## Set up with an agent
 
-This repo ships a Claude skill (`.claude/skills/forgejo-warden/`) that knows the
-policy format, the CLI, and the safety rules. From a clone, paste this into
-Claude Code (or any agent that reads repo skills), filling in the placeholders:
+From a checkout, Claude Code picks up the skill in
+`.claude/skills/forgejo-warden/` automatically — it knows the policy format,
+the CLI, and the safety rules (dry-run first, deletes only in orgs marked
+`owned`). Other agents: `npx skills add INTENTIUS/forgejo-warden`, or copy the
+skill directory into `~/.claude/skills/`.
+
+Paste this, filling in the placeholders:
 
 ```text
 Use the forgejo-warden skill in this repo to help me set up governance for my
@@ -21,29 +53,12 @@ about (interview me for the details), then run a dry-run reconcile and walk me
 through the plan. Do not apply anything.
 ```
 
-## Install
-
-```bash
-# Dry-run against your instance — reads only, prints a plan, changes nothing.
-npx @intentius/forgejo-warden reconcile --config governance.yml --base-url https://forgejo.example.com --token-env FORGEJO_TOKEN --mode dry-run
-```
-
-Installs the `forgejo-warden` CLI. Point `--base-url` at your instance — works
-against [Codeberg](https://codeberg.org) too. Config + flags below.
-
-A sibling of [github-warden](https://github.com/INTENTIUS/github-warden), built on
-the shared provider-agnostic reconcile primitive in
-[`@intentius/chant/reconcile`](https://github.com/INTENTIUS/chant) (change-set
-model, generic collection diff, guardrail framework, and the `runReconcile`
-loop). forgejo-warden supplies the Forgejo-specific layer: a REST client for a
-self-hosted instance, the config + live-state types, a Forgejo `diff()`, and the
-reconcile cycles.
-
 ## What it reconciles
 
 You declare desired state in YAML (selective-by-omission: an absent field is
 never touched); warden diffs it against the live org and, in `apply` mode,
-converges it — guarded by a removal cap so a typo can't mass-delete.
+converges it. Deletes are opt-in per org via `owned:` and guarded by a removal
+cap so a typo can't mass-delete ([POLICY.md](POLICY.md), "Delete semantics").
 
 | Cycle | Reconciles |
 |-------|------------|

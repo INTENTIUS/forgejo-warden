@@ -22,6 +22,10 @@ Core rules:
   --base-url <url> --token-env <VAR>` only reads and prints a plan.
 - **Never pass `--mode apply` until a human has reviewed the rendered plan.**
   Show them the dry-run output first.
+- Deletes happen only in orgs the policy marks with `owned:` (see POLICY.md,
+  "Delete semantics"). Leave `owned` absent unless the operator explicitly asks
+  warden to remove live entries missing from the policy — and for a plan that
+  contains deletes, always dry-run and get human review before any apply.
 - Exit `1` means a guardrail blocked the apply (removal cap): stop and ask the
   operator; do not reach for `--allow-guardrail-override` on your own. Exit `2`
   is an argument/config error, `3` a runtime/apply failure.
