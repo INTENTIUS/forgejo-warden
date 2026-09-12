@@ -1,0 +1,36 @@
+# The same policy as governance.ts, in YAML. Either file loads to the same
+# object; src/config/load.test.ts asserts it.
+orgs:
+  my-org:
+    settings:
+      description: Engineering
+      visibility: limited
+    repos:
+      api:
+        hasWiki: false
+        hasPullRequests: true
+        allowSquashMerge: true
+        topics:
+          - service
+          - api
+        branchProtection:
+          - ruleName: main
+            requiredApprovals: 1
+            enableStatusCheck: true
+            statusCheckContexts:
+              - ci
+            dismissStaleApprovals: true
+      web:
+        hasWiki: false
+        hasPullRequests: true
+        allowSquashMerge: true
+        topics:
+          - service
+          - web
+        branchProtection:
+          - ruleName: main
+            requiredApprovals: 1
+            enableStatusCheck: true
+            statusCheckContexts:
+              - ci
+            dismissStaleApprovals: true
