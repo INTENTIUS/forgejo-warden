@@ -30,7 +30,7 @@ describe("loadGovernanceConfig", () => {
     const dir = resolve(import.meta.dirname, "..", "..", "examples");
     const { writeFileSync, rmSync } = await import("node:fs");
     const p = resolve(dir, "tmp-undefined.ts");
-    writeFileSync(p, 'const on = false;\nexport const policy = { orgs: { o: { repos: { r: { hasWiki: on ? true : undefined } } } } };\n');
+    writeFileSync(p, 'const on = false;\nexport default { orgs: { o: { repos: { r: { hasWiki: on ? true : undefined } } } } };\n');
     try {
       const folded = await loadGovernanceConfig(p, "fold");
       expect("hasWiki" in (folded.orgs.o.repos?.r ?? {})).toBe(false);

@@ -2,8 +2,7 @@
  * The governance policy, loaded from YAML, JSON, or TypeScript.
  *
  * A `.ts` policy is data: an object literal typed by `GovernanceConfig`,
- * exported as `policy` (a default export does not fold; the subset admits named
- * exports only). By default it is *folded*, reduced
+ * exported as `default`. By default it is *folded*, reduced
  * to its value by `@intentius/tsad-reference` without being run, so the plan
  * is a function of the file and nothing else and no code executes to produce
  * it. `run` mode imports the file instead, for a user who wants typed JSON and
@@ -46,21 +45,21 @@ function projectFiles(root: string): Map<string, string> {
 }
 
 function policyOf(exports: Record<string, unknown>, where: string): unknown {
-  // Named, not default: the statically evaluable subset admits named exports
-  // only (spec F-Scan), so `export const policy` is the form that folds. A
-  // default export is accepted in run mode for a file that was never meant to
-  // fold.
-  if ("policy" in exports) return exports.policy;
+  // `export default` is the idiom and folds under the data-host profile
+  // (spec 1.2, S-ExportDefault); `export const policy` is accepted too.
   if ("default" in exports) return exports.default;
-  throw new GovernanceConfigError(`${where} must export the policy as \`export const policy\``);
+  if ("policy" in exports) return exports.policy;
+  throw new GovernanceConfigError(`${where} must export the policy as \`export default\``);
 }
 
 /** Fold the policy with the reference evaluator: no execution, a located refusal if the file is not data. */
 async function foldPolicy(path: string): Promise<unknown> {
-  const { foldProject } = await import("@intentius/tsad-reference");
+  // The data-host profile (spec 1.2, F-Profile-DataHost): no runtime, and a
+  // default export is the declarator named `default`, which is the idiom.
+  const { foldProject, EMPTY_HOST } = await import("@intentius/tsad-reference");
   const root = dirname(resolve(path));
   const key = relative(root, resolve(path)).split("\\").join("/");
-  const verdicts = foldProject(projectFiles(root)).verdicts;
+  const verdicts = foldProject(projectFiles(root), { ...EMPTY_HOST, profile: "data-host" }).verdicts;
   const verdict = verdicts.get(key);
   if (!verdict) throw new GovernanceConfigError(`${path}: not found among the project's files`);
   if (verdict.kind === "run") {
