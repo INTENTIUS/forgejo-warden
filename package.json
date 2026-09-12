@@ -2,7 +2,7 @@
   "name": "@intentius/forgejo-warden",
   "version": "0.3.0",
   "type": "module",
-  "description": "Keep your Forgejo org and repos in declared state — reconcile, guardrails, drift correction",
+  "description": "Keep your Forgejo org and repos in declared state \u2014 reconcile, guardrails, drift correction",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -29,12 +29,14 @@
     "test:e2e:run": "vitest run --config vitest.e2e.config.ts",
     "e2e:up": "bash e2e/bootstrap.sh",
     "e2e:down": "docker compose -f e2e/docker-compose.yml down -v",
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\" --outfile=dist/cli.js && chmod +x dist/cli.js",
-    "prepublishOnly": "npm run build"
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\" --external:@intentius/tsad-reference --outfile=dist/cli.js && chmod +x dist/cli.js && esbuild src/index.ts --bundle --platform=node --format=esm --external:@intentius/chant --external:@intentius/tsad-reference --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\" --outfile=dist/index.js && npm run build:types",
+    "prepublishOnly": "npm run build",
+    "build:types": "tsc -p tsconfig.types.json"
   },
   "dependencies": {
     "@intentius/chant": "^0.56.0",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "@intentius/tsad-reference": "^1.1.0"
   },
   "devDependencies": {
     "@intentius/chant-lexicon-github": "^0.56.0",
@@ -43,5 +45,12 @@
     "sentences": "^0.1.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.9"
+  },
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    }
   }
 }
