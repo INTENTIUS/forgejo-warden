@@ -1,23 +1,24 @@
 // The same policy as governance.yml, as data in TypeScript. The type gives
-// completion and a compile error on a misspelt key; the helper is the part
+// completion and a compile error on a misspelt key; the preset is the part
 // YAML cannot express without anchors. By default warden folds this file to
 // its value without running it (--config-mode fold); it is typed JSON.
 import type { GovernanceConfig } from "@intentius/forgejo-warden";
 
-const protectedMain = {
-  ruleName: "main",
-  requiredApprovals: 1,
-  enableStatusCheck: true,
-  statusCheckContexts: ["ci"],
-  dismissStaleApprovals: true,
-};
-
-const service = (name: string) => ({
-  hasWiki: false,
-  hasPullRequests: true,
+// One review policy, several settings. When a field it sets drifts, the plan
+// names the argument it came from and the line that argument is on.
+const reviewPreset = (review: { approvals: number; squashOnly: boolean }) => ({
   allowSquashMerge: true,
-  topics: ["service", name],
-  branchProtection: [protectedMain],
+  allowMergeCommits: !review.squashOnly,
+  allowRebase: !review.squashOnly,
+  branchProtection: [
+    {
+      ruleName: "main",
+      requiredApprovals: review.approvals,
+      enableStatusCheck: true,
+      statusCheckContexts: ["ci"],
+      dismissStaleApprovals: true,
+    },
+  ],
 });
 
 export default {
@@ -28,8 +29,18 @@ export default {
         visibility: "limited",
       },
       repos: {
-        api: service("api"),
-        web: service("web"),
+        api: {
+          ...reviewPreset({ approvals: 2, squashOnly: true }),
+          hasWiki: false,
+          hasPullRequests: true,
+          topics: ["service", "api"],
+        },
+        web: {
+          ...reviewPreset({ approvals: 1, squashOnly: false }),
+          hasWiki: false,
+          hasPullRequests: true,
+          topics: ["service", "web"],
+        },
       },
     },
   },

@@ -1,6 +1,6 @@
 # Policy
 
-The policy is the foundation of this tool: one YAML (or JSON) file with an `orgs:`
+The policy is the foundation of this tool: one YAML, JSON, or TypeScript file with an `orgs:`
 map that declares the desired state of each Forgejo organization. Everything else
 (flags, tokens, cycles) just serves the policy. It is the one file you must author.
 
@@ -352,6 +352,33 @@ a baseline with an entry under `repos:` to also manage its settings.
 | `name` | string | **required** | repo that must exist in the org |
 | `template` | string (`owner/repo`) | optional | generate the new repo from this template (`POST /repos/{owner}/{repo}/generate`); omitted: create an empty repo |
 | `private` | boolean | default `true` | whether the newly created repo is private |
+
+## A policy in TypeScript
+
+The policy can also be a `.ts` file whose default export is the policy object.
+Warden folds it to its value without running it, so it stays data. A function
+written in the same file (or imported from a sibling file) can set several
+fields from one argument. `examples/governance.ts` applies a review preset to
+two repos:
+
+```ts
+const reviewPreset = (review: { approvals: number; squashOnly: boolean }) => ({
+  allowSquashMerge: true,
+  allowMergeCommits: !review.squashOnly,
+  allowRebase: !review.squashOnly,
+  branchProtection: [{ ruleName: "main", requiredApprovals: review.approvals, /* ... */ }],
+});
+
+repos: {
+  api: { ...reviewPreset({ approvals: 2, squashOnly: true }), hasWiki: false /* ... */ },
+  web: { ...reviewPreset({ approvals: 1, squashOnly: false }), hasWiki: false /* ... */ },
+}
+```
+
+`examples/governance.yml` is the same policy with every field written out.
+When a field set by the preset drifts, the plan names the preset argument and
+the line it is on; a field written on the repo itself is reported as `direct`
+(see [CLI.md](CLI.md), "Output").
 
 ## What a plan looks like
 
