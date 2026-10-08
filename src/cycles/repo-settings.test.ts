@@ -64,7 +64,40 @@ describe("repoSettingsCycle.apply", () => {
   });
 });
 
+describe("repoSettingsCycle.buildDesired", () => {
+  it("keeps settings and topics, drops slices other cycles own", () => {
+    const cfg = {
+      repos: {
+        api: {
+          hasIssues: true,
+          topics: ["go"],
+          branchProtection: [{ ruleName: "main" }],
+          webhooks: [{ url: "https://h", events: ["push"] }],
+          secrets: [{ name: "S", value: "v" }],
+          variables: [{ name: "V", value: "v" }],
+        },
+        web: { branchProtection: [{ ruleName: "main" }] },
+      },
+    };
+    expect(repoSettingsCycle.buildDesired(cfg as never, "acme", scope)).toEqual({
+      repos: { api: { hasIssues: true, topics: ["go"] } },
+    });
+  });
+});
+
 describe("repoSettingsCycle via runReconcile", () => {
+  it("plans no branch-protection creates (#38)", async () => {
+    const config: GovernanceConfig = {
+      orgs: { acme: { repos: { api: { hasIssues: true, branchProtection: [{ ruleName: "main" }, { ruleName: "release/*" }] } } } },
+    };
+    const client = makeClient({
+      "GET /orgs/acme/repos?limit=50&page=1": [{ name: "api", has_issues: true }],
+    });
+    const result = await runReconcile({ config, client, cycles: [repoSettingsCycle], mode: "dry-run" });
+    expect(result.completed).toBe(true);
+    expect(result.cycles[0]!.counts.create).toBe(0);
+  });
+
   it("updates an existing repo's drifted settings", async () => {
     const config: GovernanceConfig = { orgs: { acme: { repos: { api: { hasIssues: true } } } } };
     const client = makeClient({

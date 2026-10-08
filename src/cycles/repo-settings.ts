@@ -2,7 +2,7 @@
  * Repo-settings cycle — reconciles settings of *existing* org repos.
  *
  *   fetchLive    — GET /orgs/{org}/repos (paginated) → LiveRepo per repo
- *   buildDesired — config.repos
+ *   buildDesired — config.repos, settings and topics only
  *   apply        — PATCH /repos/{org}/{repo}          (partial settings)
  *                  PUT   /repos/{org}/{repo}/topics   (full topics replacement)
  *
@@ -92,7 +92,15 @@ export const repoSettingsCycle: Cycle<RepoSettingsScope> = {
 
   buildDesired(orgConfig: OrgConfig): OrgConfig {
     if (!orgConfig.repos) return {};
-    return { repos: orgConfig.repos };
+    // branchProtection, webhooks, secrets and variables belong to their own
+    // cycles, and fetchLive never reads them, so leaving them in would plan
+    // creates that apply skips (#38).
+    const repos: Record<string, RepoConfig> = {};
+    for (const [name, rc] of Object.entries(orgConfig.repos)) {
+      const { branchProtection: _bp, webhooks: _wh, secrets: _s, variables: _v, ...settings } = rc;
+      if (Object.keys(settings).length) repos[name] = settings;
+    }
+    return Object.keys(repos).length ? { repos } : {};
   },
 
   async apply(
