@@ -1,5 +1,6 @@
 # The same policy as governance.ts, in YAML. Either file loads to the same
-# object; src/config/load.test.ts asserts it.
+# object; src/config/load.test.ts asserts it. YAML has no preset, so the
+# review settings are written out on each repo.
 orgs:
   my-org:
     settings:
@@ -7,12 +8,25 @@ orgs:
       visibility: limited
     repos:
       api:
+        allowSquashMerge: true
+        allowMergeCommits: false
+        allowRebase: false
+        branchProtection:
+          - ruleName: main
+            requiredApprovals: 2
+            enableStatusCheck: true
+            statusCheckContexts:
+              - ci
+            dismissStaleApprovals: true
         hasWiki: false
         hasPullRequests: true
-        allowSquashMerge: true
         topics:
           - service
           - api
+      web:
+        allowSquashMerge: true
+        allowMergeCommits: true
+        allowRebase: true
         branchProtection:
           - ruleName: main
             requiredApprovals: 1
@@ -20,17 +34,8 @@ orgs:
             statusCheckContexts:
               - ci
             dismissStaleApprovals: true
-      web:
         hasWiki: false
         hasPullRequests: true
-        allowSquashMerge: true
         topics:
           - service
           - web
-        branchProtection:
-          - ruleName: main
-            requiredApprovals: 1
-            enableStatusCheck: true
-            statusCheckContexts:
-              - ci
-            dismissStaleApprovals: true

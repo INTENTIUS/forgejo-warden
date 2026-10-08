@@ -32,13 +32,15 @@ import {
 } from "@intentius/chant/reconcile";
 import type {
   Cycle as CoreCycle,
+  CycleResult,
   ReconcileResult,
   DiffOptions,
 } from "@intentius/chant/reconcile";
 import type { ForgejoClient } from "../auth/client.js";
 import type { GovernanceConfig, OrgConfig } from "../config/types.js";
 import type { LiveOrgState } from "./live.js";
-import { diff } from "./diff.js";
+import { diff, type ChangeSet } from "./diff.js";
+import { annotatePlan, driftOrigins, type DriftOrigin, type PolicyProvenance } from "./origin.js";
 
 export { BudgetExhaustedError } from "@intentius/chant/reconcile";
 export type {
@@ -66,7 +68,15 @@ export interface RunReconcileOptions<TScope = unknown> {
   requestBudget?: number;
   /** Max fraction, in (0,1], of any one resource type's live managed entries deletable in one apply — passed to chant's `removalDeltaCap`, which owns the default (0.25) and throws on an out-of-range value. */
   removalDeltaCapFraction?: number;
+  /** Where each policy field was written, from a folded `.ts` policy. When given, each drifted field's origin is written under its plan line and returned on the cycle result. */
+  provenance?: PolicyProvenance;
 }
+
+/** A cycle's result, with the origin of each drifted field when the policy was folded. */
+export type WardenCycleResult = CycleResult & { origins?: DriftOrigin[] };
+
+/** warden's reconcile result: chant's, with origins on each cycle when the policy was folded. */
+export type WardenReconcileResult = Omit<ReconcileResult, "cycles"> & { cycles: WardenCycleResult[] };
 
 /**
  * Derive an ownership predicate from an org's `owned` declaration.
@@ -89,8 +99,12 @@ function isOwnedFromConfig(owned: OrgConfig["owned"]): DiffOptions["isOwned"] {
  */
 export async function runReconcile<TScope = unknown>(
   opts: RunReconcileOptions<TScope>,
-): Promise<ReconcileResult> {
-  return coreRunReconcile<ForgejoClient, OrgConfig, LiveOrgState, TScope>({
+): Promise<WardenReconcileResult> {
+  // The core runner renders each plan from the change set the diff returns
+  // and pushes exactly one cycle result per diff call, in order, so the k-th
+  // change set kept here is the k-th result's.
+  const changeSets: ChangeSet[] = [];
+  const result = await coreRunReconcile<ForgejoClient, OrgConfig, LiveOrgState, TScope>({
     client: opts.client,
     scopes: opts.config.orgs,
     cycles: opts.cycles,
@@ -105,7 +119,9 @@ export async function runReconcile<TScope = unknown>(
       // a delete + create pair for it to collapse. `runGuardrailChecks` still
       // resolves internally before its checks, so guardrail semantics are
       // unchanged.
-      return diff(scopeId, desired, live, scoped);
+      const cs = diff(scopeId, desired, live, scoped);
+      changeSets.push(cs);
+      return cs;
     },
     guardrails: (changeSet) =>
       runGuardrailChecks(changeSet, [
@@ -118,4 +134,15 @@ export async function runReconcile<TScope = unknown>(
     allowGuardrailOverride: opts.allowGuardrailOverride,
     requestBudget: opts.requestBudget,
   });
+  const provenance = opts.provenance;
+  if (!provenance) return result;
+  return {
+    ...result,
+    cycles: result.cycles.map((cr, i) => {
+      const cs = changeSets[i];
+      if (!cs) return cr;
+      const origins = driftOrigins(cs, opts.config, provenance);
+      return { ...cr, plan: annotatePlan(cr.plan, origins), origins };
+    }),
+  };
 }

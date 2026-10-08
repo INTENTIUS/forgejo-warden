@@ -44,6 +44,10 @@ import { webhooksCycle } from "../src/cycles/webhooks.js";
 import { diff } from "../src/reconcile/diff.js";
 import { runReconcile, type Cycle, type RateBudget, type CycleResult } from "../src/reconcile/runner.js";
 import type { OrgConfig } from "../src/config/types.js";
+import { loadGovernancePolicy } from "../src/config/load.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Gating
@@ -487,6 +491,54 @@ suite("forgejo-warden e2e (Docker Compose Forgejo)", () => {
       );
       expect(repo.description).toBe("governed probe repo");
       expect(repo.has_wiki).toBe(false);
+    }, 60_000);
+  });
+
+  applySuite("preset provenance", () => {
+    // A .ts policy whose merge settings come from a preset argument. Folded,
+    // a drifted preset-set field names that argument and its line in the plan.
+    let dir = "";
+    let file = "";
+    const presetLine = 8;
+    const source = [
+      "const reviewPreset = (review: { squashOnly: boolean }) => ({",
+      "  allowSquashMerge: true,",
+      "  allowMergeCommits: !review.squashOnly,",
+      "});",
+      "export default {",
+      `  orgs: { ${JSON.stringify(ORG)}: { repos: {`,
+      `    ${JSON.stringify(REPO)}: {`,
+      "      ...reviewPreset({ squashOnly: true }),",
+      "      hasWiki: false,",
+      "    },",
+      "  } } },",
+      "};",
+      "",
+    ].join("\n");
+
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "warden-preset-"));
+      file = join(dir, "governance.ts");
+      writeFileSync(file, source);
+    });
+    afterAll(() => {
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("a drifted preset-set field names the preset argument and its line; a direct one says direct", async () => {
+      const { config, provenance } = await loadGovernancePolicy(file, "fold");
+      expect(provenance).toBeDefined();
+      const run = async (mode: "dry-run" | "apply") =>
+        (await runReconcile({ config, client, cycles: [repoSettingsCycle], mode, provenance })).cycles[0]!;
+      expect((await run("apply")).failed).toEqual([]);
+      await client.request("PATCH", `/repos/${ORG}/${REPO}`, { allow_merge_commits: true, has_wiki: true });
+      const cr = await run("dry-run");
+      const rel = relative(process.cwd(), file);
+      const shown = rel.startsWith("..") ? file : rel;
+      expect(cr.plan).toContain("    allowMergeCommits: true → false\n");
+      expect(cr.plan).toMatch(new RegExp(`<- reviewPreset\\(\\.\\.\\.\\) argument squashOnly at ${shown.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:${presetLine}:\\d+`));
+      expect(cr.plan).toContain("    hasWiki: true → false\n      <- direct");
+      expect((await run("apply")).failed).toEqual([]);
     }, 60_000);
   });
 

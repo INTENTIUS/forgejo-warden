@@ -20,7 +20,8 @@ package.json at build time).
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--config <path>` | **required** | policy file (YAML or JSON; see below) |
+| `--config <path>` | **required** | policy file (YAML, JSON, or a `.ts` policy; see below) |
+| `--config-mode fold\|run\|check` | `fold` | how a `.ts` policy is evaluated: `fold` reduces it to its value without running it, `run` imports it, `check` does both and exits 2 if they differ |
 | `--mode dry-run\|apply` | `dry-run` | `dry-run` computes and prints plans; `apply` also mutates the instance (guardrails permitting) |
 | `--cycles <name[,name...]>` | all cycles | comma-separated subset of cycles to run, e.g. `--cycles org-settings,teams`. Unknown names exit 2 and list the known cycles |
 | `--base-url <url>` | one of the two URL flags is **required** | Forgejo instance URL, e.g. `https://forgejo.example.com` or `https://codeberg.org` (no trailing `/api`) |
@@ -35,7 +36,9 @@ Cycle names (see [CYCLES.md](CYCLES.md)): `org-settings`, `membership`, `teams`,
 
 ## Config loading
 
-- A path ending in `.json` is parsed as JSON; anything else is parsed as YAML.
+- A path ending in `.json` is parsed as JSON; a path ending in `.ts` is a
+  TypeScript policy whose default export is the policy (see `--config-mode`);
+  anything else is parsed as YAML.
 - The parsed document must be an object with an `orgs` map, otherwise the run
   exits 2 with `invalid governance config`.
 - No further schema validation happens at load time; unknown fields are ignored
@@ -72,6 +75,30 @@ For each cycle and org, the run prints:
 === <cycle> @ <org> ===
 <plan: creates / updates (field diffs) / deletes>
 ```
+
+When the policy is a `.ts` file loaded in `fold` (the default) or `check`
+mode, each drifted field in an update is followed by a line saying where the
+policy wrote the value it wants back:
+
+```
+UPDATE:
+  [repo] api
+    hasWiki: true → false
+      <- direct
+    allowMergeCommits: true → false
+      <- reviewPreset(...) argument squashOnly at examples/governance.ts:33:55
+```
+
+| Origin line | Meaning |
+|---|---|
+| `direct` | the value is written on the field itself in the policy |
+| `<fn>(...) argument <param> at <file>:<line>:<col>` | a function in the policy (a preset) set the field from one of its parameters; the location is the argument at the call, so change the argument to change the field. When the parameter's default applied, the line names the call instead |
+| `<fn>(...) sets it in its body at <file>:<line>:<col>, called at ...` | the function's body fixes the value, so the edit belongs in the function |
+| `unknown (<reason>)` | the fold could not attribute the value; it is never reported as `direct` |
+
+A YAML or JSON policy, or a `.ts` policy loaded with `--config-mode run`,
+prints the plan without these lines. The same origins are on each cycle
+result's `origins` field when warden is used as a library.
 
 In `apply` mode each block is followed by `Applied: N, Failed: N` and a `FAILED`
 line per entry that errored (the run continues past individual failures). A

@@ -14,11 +14,12 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { loadGovernanceConfig, type ConfigMode } from "./config/load.js";
+import { loadGovernancePolicy, type ConfigMode } from "./config/load.js";
 import { createClient } from "./auth/client.js";
 import { runReconcile, type Cycle } from "./reconcile/runner.js";
 import { CYCLE_REGISTRY } from "./cli/registry.js";
 import type { GovernanceConfig } from "./config/types.js";
+import type { PolicyProvenance } from "./reconcile/origin.js";
 import pkg from "../package.json" with { type: "json" };
 
 /** Inlined from package.json at build time — always matches the published version. */
@@ -169,8 +170,9 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
   }
 
   let config: GovernanceConfig;
+  let provenance: PolicyProvenance | undefined;
   try {
-    config = await loadGovernanceConfig(args.config, args.configMode);
+    ({ config, provenance } = await loadGovernancePolicy(args.config, args.configMode));
   } catch (err) {
     die(2, `invalid governance config "${args.config}": ${errMsg(err)}`);
   }
@@ -200,6 +202,7 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
       mode: args.mode,
       allowGuardrailOverride: args.allowGuardrailOverride,
       removalDeltaCapFraction: args.removalCapFraction,
+      provenance,
     });
   } catch (err) {
     die(3, `reconcile failed: ${errMsg(err)}`);
@@ -232,7 +235,8 @@ function printUsage(): void {
       "Usage: forgejo-warden reconcile [flags]",
       "",
       "Flags:",
-      "  --config <path>               Governance config (YAML or JSON). Required.",
+      "  --config <path>               Governance config (YAML, JSON, or a .ts policy). Required.",
+      "  --config-mode fold|run|check  How a .ts policy is evaluated (default: fold).",
       "  --mode dry-run|apply          Reconcile mode (default: dry-run).",
       "  --cycles <name[,name...]>     Cycles to run (default: all).",
       "  --base-url <url>              Forgejo instance URL (or --base-url-env <VAR>).",
