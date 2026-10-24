@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://intentius.io/forgejo-warden/schemas/governance.schema.json",
+  "title": "forgejo-warden governance config",
+  "description": "The governance policy forgejo-warden reconciles, in YAML or JSON form. An org or repo field warden does not know is refused, so a typo fails the check.",
+  "type": "object",
+  "required": ["orgs"],
+  "additionalProperties": false,
+  "properties": {
+    "orgs": {
+      "type": "object",
+      "description": "The orgs to manage, keyed by org name",
+      "additionalProperties": { "$ref": "#/$defs/org" }
+    }
+  },
+  "$defs": {
+    "stringList": { "type": "array", "items": { "type": "string" } },
+    "named": { "type": "array", "items": { "type": "object", "required": ["name"] } },
+    "webhooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": { "type": "string" },
+          "type": { "type": "string" },
+          "contentType": { "enum": ["json", "form"] },
+          "events": { "$ref": "#/$defs/stringList" },
+          "active": { "type": "boolean" },
+          "branchFilter": { "type": "string" }
+        }
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "items": { "type": "object", "required": ["name"], "additionalProperties": false, "properties": { "name": { "type": "string" } } }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": { "name": { "type": "string" }, "value": { "type": "string" } }
+      }
+    },
+    "org": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owned": { "oneOf": [{ "type": "boolean" }, { "$ref": "#/$defs/stringList" }] },
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fullName": { "type": "string" },
+            "description": { "type": "string" },
+            "website": { "type": "string" },
+            "location": { "type": "string" },
+            "visibility": { "enum": ["public", "limited", "private"] },
+            "repoAdminChangeTeamAccess": { "type": "boolean" }
+          }
+        },
+        "members": {
+          "type": "array",
+          "items": { "type": "object", "required": ["username"], "additionalProperties": false, "properties": { "username": { "type": "string" } } }
+        },
+        "teams": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "description": { "type": "string" },
+              "permission": { "enum": ["read", "write", "admin", "owner"] },
+              "canCreateOrgRepo": { "type": "boolean" },
+              "includesAllRepositories": { "type": "boolean" },
+              "units": { "$ref": "#/$defs/stringList" },
+              "previously": { "type": "string" },
+              "members": {
+                "type": "array",
+                "items": { "type": "object", "required": ["username"], "additionalProperties": false, "properties": { "username": { "type": "string" } } }
+              },
+              "repos": {
+                "type": "array",
+                "items": { "type": "object", "required": ["name"], "additionalProperties": false, "properties": { "name": { "type": "string" } } }
+              }
+            }
+          }
+        },
+        "repos": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "description": { "type": "string" },
+              "website": { "type": "string" },
+              "private": { "type": "boolean" },
+              "hasIssues": { "type": "boolean" },
+              "hasWiki": { "type": "boolean" },
+              "hasPullRequests": { "type": "boolean" },
+              "defaultBranch": { "type": "string" },
+              "allowMergeCommits": { "type": "boolean" },
+              "allowRebase": { "type": "boolean" },
+              "allowSquashMerge": { "type": "boolean" },
+              "defaultMergeStyle": { "enum": ["merge", "rebase", "rebase-merge", "squash"] },
+              "topics": { "$ref": "#/$defs/stringList" },
+              "branchProtection": { "type": "array", "items": { "type": "object", "required": ["ruleName"] } },
+              "webhooks": { "$ref": "#/$defs/webhooks" },
+              "secrets": { "$ref": "#/$defs/secrets" },
+              "variables": { "$ref": "#/$defs/variables" }
+            }
+          }
+        },
+        "repoBaselines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": { "name": { "type": "string" }, "template": { "type": "string" }, "private": { "type": "boolean" } }
+          }
+        },
+        "secrets": { "$ref": "#/$defs/secrets" },
+        "variables": { "$ref": "#/$defs/variables" },
+        "webhooks": { "$ref": "#/$defs/webhooks" }
+      }
+    }
+  }
+}
