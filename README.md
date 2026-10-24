@@ -78,6 +78,34 @@ semantics").
 | `secrets-variables` | Actions secrets (presence) + variables (value), org & repo |
 | `webhooks` | org & repo webhooks |
 
+## As a chant workspace member
+
+The package ships a `forge-governance` member kind for [chant](https://github.com/INTENTIUS/chant) workspaces
+([chant#3180](https://github.com/INTENTIUS/chant/issues/3180)). A repo that holds a governance policy declares it
+as a member, so `chant workspace ls` and `chant workspace graph` list the policy beside the rest of the estate.
+
+```json
+{
+  "pins": [{ "package": "@intentius/forgejo-warden", "version": "<this version>" }],
+  "members": [{ "name": "forge", "dir": "governance", "kind": "forge-governance" }]
+}
+```
+
+The kind is data in `workspace-kinds.json`, exported at `@intentius/forgejo-warden/workspace-kinds`. chant reads it without
+importing the package.
+
+| Part | Value |
+|---|---|
+| Probe | `governance.yml` directly in the member's directory |
+| Member file | `governance.yml` must pass `schemas/governance.schema.json`. `chant workspace check` reports a missing file, a file that does not parse, or a field the schema does not know as `WSP012` |
+| Outputs | `repos`, the repos in `orgs.<org>.repos`, and `teams`, the teams in `orgs.<org>.teams`, for [member links](https://intentius.io/chant/reference/workspace-declaration/#member-links) |
+| Graph | `graph.reader` names `dist/graph-reader.mjs`, which turns `governance.yml` into graph IR with no Forgejo call: nodes for the org, repos, teams and branch protection rules, and edges for a team's access to a repo (every repo of the org for a team with `includesAllRepositories`) and a rule's repo. The policy declares no rulesets or apps, so there are none. It draws the policy as declared; drift colouring needs a live read and is not part of it. Needs a chant that has [chant#4413](https://github.com/INTENTIUS/chant/issues/4413) |
+
+The schema is stricter than the loader: the loader drops a field it does not know, and the schema refuses it, so a
+misspelled field fails `chant workspace check` before a reconcile silently leaves it unmanaged. A member kind with a
+`memberFile` needs a chant that has [chant#3672](https://github.com/INTENTIUS/chant/issues/3672); an older chant
+fails the kinds file with `WSP002`.
+
 ## Tests
 
 `npm test` runs the unit suite (mock-client, fully offline). The
