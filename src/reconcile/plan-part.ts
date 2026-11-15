@@ -13,7 +13,8 @@
 import { basename, dirname, resolve } from "node:path";
 import { reconcilePlanPart, type ChangeSetPart } from "@intentius/chant/change-set";
 import type { CycleError, DeferredWork } from "@intentius/chant/reconcile";
-import type { ChangeSet } from "./diff.js";
+import { planAddress } from "../drift/reader.js";
+import type { ChangeSet, ChangeSetEntry } from "./diff.js";
 
 /** The lexicon label a forgejo-warden part carries on its member and entries. */
 export const PLAN_PART_LEXICON = "forgejo";
@@ -39,14 +40,27 @@ export interface PlanPartInput {
 }
 
 /**
- * The part for one reconcile run. A run where every cycle planned gives a
- * `planned` member whose digest covers the change sets. When a cycle errored
- * or the budget skipped one, the plan is incomplete, so the member is
+ * The change sets with every entry's `address` set to {@link planAddress}, so
+ * the part's entries land on the graph nodes the drift reader's records use.
+ */
+export function addressChangeSets(changeSets: readonly ChangeSet[]): ChangeSet[] {
+  return changeSets.map((cs) => ({
+    ...cs,
+    entries: cs.entries.map((e): ChangeSetEntry => ({ ...e, address: planAddress(cs.org, e) })),
+  }));
+}
+
+/**
+ * The part for one reconcile run. Each entry's address is its graph node id,
+ * or `<node id>#<resourceType>[<key>]` for a change under the node (chant#5089).
+ * A run where every cycle planned gives a `planned` member whose digest
+ * covers the change sets. When a cycle errored or the budget skipped one,
+ * the plan is incomplete, so the member is
  * `failed` with no plan digest (no gate can bind it) and an `error` naming
  * what is missing; the entries the other cycles planned stay in the part.
  */
 export function planPart(input: PlanPartInput): ChangeSetPart {
-  const part = reconcilePlanPart({ member: input.member, plan: input.changeSets, lexicon: PLAN_PART_LEXICON });
+  const part = reconcilePlanPart({ member: input.member, plan: addressChangeSets(input.changeSets), lexicon: PLAN_PART_LEXICON });
   const missing = [
     ...(input.errored ?? []).map((e) => `${e.name} @ ${e.org} errored in ${e.stage}: ${e.error}`),
     ...(input.deferred?.skippedCycles ?? []).map((c) => `${c} was deferred by the request budget`),

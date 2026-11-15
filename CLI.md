@@ -135,9 +135,19 @@ forgejo-warden reconcile \
 The part's member is named by `--member`, or by the policy file's directory
 (`governance` above) when the flag is absent; a policy at the filesystem root
 needs `--member`. Its planner is `warden` and its lexicon `forgejo`. Each
-planned change is one entry with the address `<resourceType>.<key>` and the
-org as its scope, and the member's `planDigest` covers every change set the
-run planned.
+planned change is one entry with the org as its scope, and the member's
+`planDigest` covers every change set the run planned.
+
+An entry's address is the id of the graph node the change falls under, which
+is also the node the drift reader puts its record on (see the Drift section of
+the README). A change to the node itself, such as an org's settings, a repo, a
+team or a branch protection rule, has the bare node id, for example
+`repo/acme/api`. Any other change gets `<node id>#<resourceType>[<key>]`. An
+org member `bob` is `org/acme#member[bob]`, and secret `TOKEN` on repo `api` is
+`repo/acme/api#repo-secret[api/TOKEN]`. chant places such an entry on the node
+before the first `#`, so `chant workspace` shows the plan on the same nodes as
+the drift. The org is part of every node id, so two orgs that each have a repo
+named `api` give two addresses.
 
 When a cycle errors or the request budget defers one, the plan is incomplete:
 the member's status is `failed`, its `planDigest` is `null` and its `error`

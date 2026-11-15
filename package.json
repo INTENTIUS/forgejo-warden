@@ -41,12 +41,12 @@
     "build:types": "tsc -p tsconfig.types.json"
   },
   "dependencies": {
-    "@intentius/chant": "^0.124.96",
+    "@intentius/chant": "^0.124.97",
     "yaml": "^2.9.0",
     "@intentius/tsad-reference": "^2.3.0"
   },
   "devDependencies": {
-    "@intentius/chant-lexicon-github": "^0.124.96",
+    "@intentius/chant-lexicon-github": "^0.124.97",
     "@types/node": "^22.0.0",
     "ajv": "^8.20.0",
     "esbuild": "^0.28.0",

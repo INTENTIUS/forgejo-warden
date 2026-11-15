@@ -14,7 +14,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { decodeDriftLine, type DriftLine, type DriftRecord } from "@intentius/chant/drift-record";
 import type { DriftReaderInput, DriftReaderOutput } from "@intentius/chant/workspace/drift-reader";
 import { makeClient } from "../cycles/_testutil.js";
-import { driftAddress, driftAttributes, governanceDrift, readGovernanceDrift } from "./reader.js";
+import { driftAddress, driftAttributes, governanceDrift, planAddress, readGovernanceDrift } from "./reader.js";
 
 const require = createRequire(import.meta.url);
 const readSchema = (id: string) => JSON.parse(readFileSync(require.resolve(id), "utf-8"));
@@ -97,6 +97,38 @@ describe("driftAddress", () => {
     expect(at("team-member", "core/alice")).toBe("team/acme/core");
     expect(at("team-repo", "core/api")).toBe("team/acme/core");
     expect(at("branch-protection", "api/release/*")).toBe("protection/acme/api/release/*");
+  });
+});
+
+describe("planAddress", () => {
+  const at = (resourceType: string, key: string, org = "acme") => planAddress(org, { resourceType, key });
+
+  test("is the bare node id for the node's own type", () => {
+    expect(at("org-settings", "org-settings")).toBe("org/acme");
+    expect(at("repo", "api")).toBe("repo/acme/api");
+    expect(at("team", "core")).toBe("team/acme/core");
+    expect(at("branch-protection", "api/release/*")).toBe("protection/acme/api/release/*");
+  });
+
+  test("is <node id>#<resourceType>[<key>] for a change under the node", () => {
+    expect(at("member", "alice")).toBe("org/acme#member[alice]");
+    expect(at("org-webhook", "https://hooks.example.com/x")).toBe("org/acme#org-webhook[https://hooks.example.com/x]");
+    expect(at("org-secret", "TOKEN")).toBe("org/acme#org-secret[TOKEN]");
+    expect(at("repo-baseline", "api")).toBe("repo/acme/api#repo-baseline[api]");
+    expect(at("repo-variable", "api/REGION")).toBe("repo/acme/api#repo-variable[api/REGION]");
+    expect(at("team-member", "core/alice")).toBe("team/acme/core#team-member[core/alice]");
+    expect(at("team-repo", "core/api")).toBe("team/acme/core#team-repo[core/api]");
+  });
+
+  test("starts with the node driftAddress gives, before the first #", () => {
+    for (const [resourceType, key] of [["member", "alice"], ["repo", "api"], ["repo-secret", "api/TOKEN"], ["team-repo", "core/api"]]) {
+      expect(at(resourceType, key).split("#")[0]).toBe(driftAddress("acme", { resourceType, key }));
+    }
+  });
+
+  test("keeps two orgs' same-named repos apart", () => {
+    expect(at("repo", "api", "acme")).not.toBe(at("repo", "api", "globex"));
+    expect(at("repo-secret", "api/TOKEN", "acme")).not.toBe(at("repo-secret", "api/TOKEN", "globex"));
   });
 });
 
