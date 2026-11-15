@@ -16,7 +16,7 @@ releases before `0.5.0` are not recorded here.
   teams the policy declares. See
   [README.md](README.md#as-a-chant-workspace-member).
 - The `@intentius/chant` and `@intentius/chant-lexicon-github` range moves from
-  `^0.109.0` to `^0.124.95`.
+  `^0.109.0` to `^0.124.96`.
 - `@intentius/tsad-reference` moves to `^2.3.0`. When a `.ts` policy is folded,
   a plan line now names a preset by the name the policy imported it under: a
   preset exported as `export { reviewPreset as preset }` is reported as
