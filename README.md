@@ -94,8 +94,8 @@ as a member, so `chant workspace ls` and `chant workspace graph` list the policy
 The kind is data in `workspace-kinds.json`, exported at `@intentius/forgejo-warden/workspace-kinds`. chant reads it without
 importing the package.
 
-The kind needs chant `>= 0.124.49`: its `memberFile` arrived in `0.124.48` and its `graph.reader` in `0.124.49`, and an
-older chant drops the kind with `WSP002`. `npm test` validates `workspace-kinds.json` against chant's
+The kind needs chant `>= 0.124.96`: its `memberFile` arrived in `0.124.48`, its `graph.reader` in `0.124.49` and its
+`drift.reader` in `0.124.96`, and an older chant drops the kind with `WSP002`. `npm test` validates `workspace-kinds.json` against chant's
 `workspace-kinds.schema.json`, and the graph the reader draws for `examples/governance.yml` against chant's graph schema.
 
 | Part | Value |
@@ -103,10 +103,35 @@ older chant drops the kind with `WSP002`. `npm test` validates `workspace-kinds.
 | Probe | `governance.yml` directly in the member's directory |
 | Member file | `governance.yml` must pass `schemas/governance.schema.json`. `chant workspace check` reports a missing file, a file that does not parse, or a field the schema does not know as `WSP012` |
 | Outputs | `repos`, the repos in `orgs.<org>.repos`, and `teams`, the teams in `orgs.<org>.teams`, for [member links](https://intentius.io/chant/reference/workspace-declaration/#member-links) |
-| Graph | `graph.reader` names `dist/graph-reader.mjs`, which turns `governance.yml` into graph IR with no Forgejo call: nodes for the org, repos, teams and branch protection rules, and edges for a team's access to a repo (every repo of the org for a team with `includesAllRepositories`) and a rule's repo. The policy declares no rulesets or apps, so there are none. It draws the policy as declared; drift colouring needs a live read and is not part of it |
+| Graph | `graph.reader` names `dist/graph-reader.mjs`, which turns `governance.yml` into graph IR with no Forgejo call: nodes for the org, repos, teams and branch protection rules, and edges for a team's access to a repo (every repo of the org for a team with `includesAllRepositories`) and a rule's repo. The policy declares no rulesets or apps, so there are none. It draws the policy as declared, with no Forgejo call |
+| Drift | `drift.reader` names `dist/drift-reader.mjs`, which `chant workspace drift --member <name>` runs for a member of the kind. See [Drift](#drift) below |
 
 The schema is stricter than the loader: the loader drops a field it does not know, and the schema refuses it, so a
 misspelled field fails `chant workspace check` before a reconcile silently leaves it unmanaged.
+
+### Drift
+
+`chant workspace drift --member <name>` reads a governance member through the kind's drift reader. The reader loads
+the member's `governance.yml` (or its `governance.ts` when there is no YAML file), runs every cycle as a dry run
+against the Forgejo instance, and answers with chant's drift stream: one record per planned change, engine `warden`,
+read `plan`. It never applies anything.
+
+| Planned change | Drift status |
+|---|---|
+| create: declared, absent on the forge | `pending` |
+| update: a declared field differs | `drifted`, with each field as an attribute (`before` the policy's value, `after` the forge's) |
+| delete: on the forge, undeclared, in an `owned` collection | `undeclared` |
+
+A record's address is the graph node it belongs to where the graph reader draws one (`org/<org>` for org settings,
+`repo/<org>/<repo>`, `team/<org>/<team>`, `protection/<org>/<repo>/<rule>`), so chant colours that node, and
+`<resourceType>/<org>/<key>` for the rest (team members, webhooks, secrets, variables, repo baselines). A forge that
+matches the policy gives no records. A cycle that fails is a `not-observed` record at `cycle/<org>/<cycle>` with reason
+`read-failed`, so a read that did not finish never reads as clean.
+
+chant runs the reader in its own process, so the credentials come from that process's environment: the instance URL
+from `FORGEJO_URL` and the API token from `FORGEJO_TOKEN` (the kind's config names both). When either is unset the
+read is refused with `no-drift-read` and the forge is not called. `--read` other than `plan`, `--stack` and `--resource`
+are refused (`read-unsupported`, `resource-unsupported`): a warden plans whole orgs. Drift needs chant `>= 0.124.96`.
 
 ## Tests
 
