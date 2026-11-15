@@ -68,9 +68,12 @@ describe("parseReconcileArgs", () => {
     bad([...base, "--plan-json", "plan.json", "--member", ""]);
   });
 
-  it("throws code 2 on missing config / instance url / token / bad mode / unknown flag", () => {
+  it("leaves config undefined when --config is omitted", () => {
+    expect(parseReconcileArgs(["--base-url", "u", "--token-env", "T"]).config).toBeUndefined();
+  });
+
+  it("throws code 2 on missing instance url / token / bad mode / unknown flag", () => {
     const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
-    bad(["--base-url", "u", "--token-env", "T"]); // no config
     bad(["--config", "g.yml", "--token-env", "T"]); // no base url
     bad(["--config", "g.yml", "--base-url", "u"]); // no token
     bad(["--config", "g.yml", "--base-url", "u", "--token-env", "T", "--mode", "nope"]);

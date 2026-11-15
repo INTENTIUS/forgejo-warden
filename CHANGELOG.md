@@ -5,6 +5,9 @@ releases before `0.5.0` are not recorded here.
 
 ## Unreleased
 
+- `--config` is optional for `reconcile` and `repos`. Without it the policy is
+  `governance.yml` in the working directory, or `governance.ts` there when no
+  `governance.yml` exists. With neither file the command exits 2.
 - The package ships a `forge-governance` member kind for chant workspaces in
   `workspace-kinds.json`, exported at `@intentius/forgejo-warden/workspace-kinds`.
   `chant workspace check` validates a member's `governance.yml` against

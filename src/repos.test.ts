@@ -5,8 +5,8 @@
  * has. The Forgejo client is mocked the way the cycle tests do it.
  */
 
-import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseForgeRepos } from "@intentius/chant/workspace/checks/org";
@@ -29,9 +29,15 @@ const client = () =>
 /** What the CLI writes: the document as JSON text. */
 const written = async () => `${JSON.stringify(await forgeRepoList(client(), "acme", BASE), null, 2)}\n`;
 
+const roots: string[] = [];
+afterEach(() => {
+  for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
+});
+
 /** An org workspace whose repo members name these URLs. */
 function orgWorkspace(urls: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "fw-repos-"));
+  roots.push(root);
   const members = Object.entries(urls).map(([name, url]) => ({ name, kind: "repo", repo: { url, rev: SHA } }));
   writeFileSync(join(root, "chant.workspace.json"), JSON.stringify({ name: "acme", schema: 1, scope: "org", members }));
   return root;
@@ -123,9 +129,11 @@ describe("parseReposArgs", () => {
     expect(parseReposArgs([...base, "--org", "acme", "--out", "repos.json"])).toMatchObject({ org: "acme", out: "repos.json" });
     expect(parseReposArgs(["--config", "g.ts", "--base-url-env", "U", "--token-env", "T", "--config-mode", "run"])).toMatchObject({ baseUrlEnv: "U", configMode: "run" });
   });
-  it("throws code 2 on missing config, url or token, reconcile flags and empty values", () => {
+  it("leaves config undefined when --config is omitted", () => {
+    expect(parseReposArgs(["--base-url", "u", "--token-env", "T"]).config).toBeUndefined();
+  });
+  it("throws code 2 on missing url or token, reconcile flags and empty values", () => {
     const bad = (argv: string[]) => expect(() => parseReposArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
-    bad(["--base-url", "u", "--token-env", "T"]);
     bad(["--config", "g.yml", "--token-env", "T"]);
     bad(["--config", "g.yml", "--base-url", "u"]);
     bad([...base, "--mode", "apply"]);

@@ -19,6 +19,7 @@
 
 import { pathToFileURL } from "node:url";
 import { loadGovernancePolicy, type ConfigMode } from "./config/load.js";
+import { resolveConfigPath } from "./config/resolve.js";
 import { createClient } from "./auth/client.js";
 import { writeFileSync } from "node:fs";
 import { runReconcile, type Cycle } from "./reconcile/runner.js";
@@ -43,7 +44,8 @@ export class CliError extends Error {
 }
 
 export interface ReconcileArgs {
-  config: string;
+  /** `--config`; undefined reads governance.yml (or governance.ts) in the working directory. */
+  config: string | undefined;
   /** How a `.ts` policy is evaluated: folded without running (default), imported, or both and compared. */
   configMode: ConfigMode;
   mode: "dry-run" | "apply";
@@ -77,7 +79,7 @@ const KNOWN_FLAGS = new Set([
 /** Parse reconcile argv. Pure: throws `CliError` (with exit code) on bad input. */
 export function parseReconcileArgs(argv: string[]): ReconcileArgs {
   const args: ReconcileArgs = {
-    config: "",
+    config: undefined,
     configMode: "fold",
     mode: "dry-run",
     cycles: [],
@@ -152,7 +154,6 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
     i++;
   }
 
-  if (!args.config) throw new CliError(2, "--config is required");
   if (!args.baseUrl && !args.baseUrlEnv) throw new CliError(2, "instance URL is required: supply --base-url <url> or --base-url-env <VAR>");
   if (!args.tokenEnv) throw new CliError(2, "--token-env <VAR> is required");
   if (args.planJson !== undefined && args.mode === "apply") {
@@ -166,7 +167,8 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
 }
 
 export interface ReposArgs {
-  config: string;
+  /** `--config`; undefined reads governance.yml (or governance.ts) in the working directory. */
+  config: string | undefined;
   configMode: ConfigMode;
   /** The org to list; undefined means the policy's only org. */
   org: string | undefined;
@@ -182,7 +184,7 @@ const REPOS_FLAGS = new Set(["--config", "--config-mode", "--org", "--out", "--b
 /** Parse `repos` argv. Pure: throws `CliError` (with exit code) on bad input. */
 export function parseReposArgs(argv: string[]): ReposArgs {
   const args: ReposArgs = {
-    config: "",
+    config: undefined,
     configMode: "fold",
     org: undefined,
     out: undefined,
@@ -226,7 +228,6 @@ export function parseReposArgs(argv: string[]): ReposArgs {
         break;
     }
   }
-  if (!args.config) throw new CliError(2, "--config is required");
   if (!args.baseUrl && !args.baseUrlEnv) throw new CliError(2, "instance URL is required: supply --base-url <url> or --base-url-env <VAR>");
   if (!args.tokenEnv) throw new CliError(2, "--token-env <VAR> is required");
   return args;
@@ -264,18 +265,21 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
     throw err;
   }
 
+  const configPath = resolveConfigPath(args.config);
+  if (!configPath) die(2, "no --config given and no governance.yml or governance.ts in the working directory");
+
   let config: GovernanceConfig;
   let provenance: PolicyProvenance | undefined;
   try {
-    ({ config, provenance } = await loadGovernancePolicy(args.config, args.configMode));
+    ({ config, provenance } = await loadGovernancePolicy(configPath, args.configMode));
   } catch (err) {
-    die(2, `invalid governance config "${args.config}": ${errMsg(err)}`);
+    die(2, `invalid governance config "${configPath}": ${errMsg(err)}`);
   }
 
   let member: string | undefined;
   if (args.planJson !== undefined) {
-    member = args.member ?? defaultMemberName(args.config);
-    if (!member) die(2, `cannot name the --plan-json member from "${args.config}"'s directory; give --member <name>`);
+    member = args.member ?? defaultMemberName(configPath);
+    if (!member) die(2, `cannot name the --plan-json member from "${configPath}"'s directory; give --member <name>`);
   }
 
   const baseUrl = args.baseUrl ?? env(args.baseUrlEnv!);
@@ -348,11 +352,14 @@ async function runReposCommand(argv: string[]): Promise<void> {
     throw err;
   }
 
+  const configPath = resolveConfigPath(args.config);
+  if (!configPath) die(2, "no --config given and no governance.yml or governance.ts in the working directory");
+
   let config: GovernanceConfig;
   try {
-    ({ config } = await loadGovernancePolicy(args.config, args.configMode));
+    ({ config } = await loadGovernancePolicy(configPath, args.configMode));
   } catch (err) {
-    die(2, `invalid governance config "${args.config}": ${errMsg(err)}`);
+    die(2, `invalid governance config "${configPath}": ${errMsg(err)}`);
   }
 
   let org: string;
@@ -391,7 +398,7 @@ function printUsage(): void {
       "       forgejo-warden repos [flags]",
       "",
       "reconcile flags:",
-      "  --config <path>               Governance config (YAML, JSON, or a .ts policy). Required.",
+      "  --config <path>               Governance config (YAML, JSON, or a .ts policy; default governance.yml, else governance.ts).",
       "  --config-mode fold|run|check  How a .ts policy is evaluated (default: fold).",
       "  --mode dry-run|apply          Reconcile mode (default: dry-run).",
       "  --cycles <name[,name...]>     Cycles to run (default: all).",
@@ -406,7 +413,7 @@ function printUsage(): void {
       "the JSON `chant workspace check --forge-repos <file>` reads.",
       "",
       "repos flags:",
-      "  --config <path>               Governance config (YAML, JSON, or a .ts policy). Required.",
+      "  --config <path>               Governance config (YAML, JSON, or a .ts policy; default governance.yml, else governance.ts).",
       "  --config-mode fold|run|check  How a .ts policy is evaluated (default: fold).",
       "  --org <name>                  Org to list (default: the policy's only org).",
       "  --out <file>                  File to write (default: stdout).",
