@@ -12,6 +12,9 @@
   "bugs": {
     "url": "https://github.com/INTENTIUS/forgejo-warden/issues"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "publishConfig": {
     "access": "public"
   },

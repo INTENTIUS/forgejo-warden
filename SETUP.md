@@ -15,7 +15,7 @@ npm install -g @intentius/forgejo-warden
 forgejo-warden --help
 ```
 
-Node 22+ (the CLI uses the global `fetch`).
+Node 24+ (the CLI uses the global `fetch`).
 
 ## Create a token
 

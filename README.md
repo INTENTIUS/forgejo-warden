@@ -46,7 +46,7 @@ stay off entirely until you mark an org `owned` in the policy.
 - A Forgejo API token ([SETUP.md](SETUP.md) has the click-path and scopes; a
   dry-run needs only read). Any self-hosted Forgejo works, and so does
   [Codeberg](https://codeberg.org); point `--base-url` at the instance.
-- Node 22+.
+- Node 24+.
 
 About ten minutes gets you to a first dry-run plan. The quickest probe needs
 no clone at all:
