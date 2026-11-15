@@ -2,10 +2,12 @@
 /**
  * forgejo-warden — governance reconcile CLI.
  *
- * Subcommand:
+ * Subcommands:
  *   reconcile   Load config, build an authed client, run selected cycles.
  *               `--plan-json <file>` also writes the plan as a chant
  *               change-set part.
+ *   repos       Write the policy's org's repository list in the format
+ *               `chant workspace check --forge-repos` reads.
  *
  * Auth is a Forgejo API token + the instance base URL (self-hosted):
  *   --base-url <url> | --base-url-env <VAR>     Forgejo instance URL
@@ -21,6 +23,7 @@ import { createClient } from "./auth/client.js";
 import { writeFileSync } from "node:fs";
 import { runReconcile, type Cycle } from "./reconcile/runner.js";
 import { defaultMemberName, planPart } from "./reconcile/plan-part.js";
+import { forgeRepoList, pickOrg } from "./repos.js";
 import { CYCLE_REGISTRY } from "./cli/registry.js";
 import type { GovernanceConfig } from "./config/types.js";
 import type { PolicyProvenance } from "./reconcile/origin.js";
@@ -162,6 +165,73 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
   return args;
 }
 
+export interface ReposArgs {
+  config: string;
+  configMode: ConfigMode;
+  /** The org to list; undefined means the policy's only org. */
+  org: string | undefined;
+  /** File to write; undefined writes to stdout. */
+  out: string | undefined;
+  baseUrl: string | undefined;
+  baseUrlEnv: string | undefined;
+  tokenEnv: string | undefined;
+}
+
+const REPOS_FLAGS = new Set(["--config", "--config-mode", "--org", "--out", "--base-url", "--base-url-env", "--token-env"]);
+
+/** Parse `repos` argv. Pure: throws `CliError` (with exit code) on bad input. */
+export function parseReposArgs(argv: string[]): ReposArgs {
+  const args: ReposArgs = {
+    config: "",
+    configMode: "fold",
+    org: undefined,
+    out: undefined,
+    baseUrl: undefined,
+    baseUrlEnv: undefined,
+    tokenEnv: undefined,
+  };
+  const need = (i: number, flag: string): string => {
+    const v = argv[i];
+    if (v === undefined || v.startsWith("--") || v === "") throw new CliError(2, `${flag} requires a value`);
+    return v;
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i];
+    if (!flag.startsWith("--")) throw new CliError(2, `unexpected positional argument: ${flag}`);
+    if (!REPOS_FLAGS.has(flag)) throw new CliError(2, `unknown flag for repos: ${flag}`);
+    switch (flag) {
+      case "--config":
+        args.config = need(++i, flag);
+        break;
+      case "--config-mode": {
+        const v = argv[++i];
+        if (v !== "fold" && v !== "run" && v !== "check") throw new CliError(2, `--config-mode must be "fold", "run" or "check", got: ${v ?? "(missing)"}`);
+        args.configMode = v;
+        break;
+      }
+      case "--org":
+        args.org = need(++i, flag);
+        break;
+      case "--out":
+        args.out = need(++i, flag);
+        break;
+      case "--base-url":
+        args.baseUrl = need(++i, flag);
+        break;
+      case "--base-url-env":
+        args.baseUrlEnv = need(++i, flag);
+        break;
+      case "--token-env":
+        args.tokenEnv = need(++i, flag);
+        break;
+    }
+  }
+  if (!args.config) throw new CliError(2, "--config is required");
+  if (!args.baseUrl && !args.baseUrlEnv) throw new CliError(2, "instance URL is required: supply --base-url <url> or --base-url-env <VAR>");
+  if (!args.tokenEnv) throw new CliError(2, "--token-env <VAR> is required");
+  return args;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -269,12 +339,58 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
   process.exit(0);
 }
 
+async function runReposCommand(argv: string[]): Promise<void> {
+  let args: ReposArgs;
+  try {
+    args = parseReposArgs(argv);
+  } catch (err) {
+    if (err instanceof CliError) die(err.code, err.message);
+    throw err;
+  }
+
+  let config: GovernanceConfig;
+  try {
+    ({ config } = await loadGovernancePolicy(args.config, args.configMode));
+  } catch (err) {
+    die(2, `invalid governance config "${args.config}": ${errMsg(err)}`);
+  }
+
+  let org: string;
+  try {
+    org = pickOrg(Object.keys(config.orgs), args.org);
+  } catch (err) {
+    die(2, errMsg(err));
+  }
+
+  const baseUrl = args.baseUrl ?? env(args.baseUrlEnv!);
+  const token = env(args.tokenEnv!);
+  const client = createClient({ baseUrl, token });
+
+  let text: string;
+  try {
+    text = `${JSON.stringify(await forgeRepoList(client, org, baseUrl), null, 2)}\n`;
+  } catch (err) {
+    die(3, `listing the repositories of ${org} failed: ${errMsg(err)}`);
+  }
+  if (args.out === undefined) {
+    process.stdout.write(text);
+  } else {
+    try {
+      writeFileSync(args.out, text, "utf-8");
+    } catch (err) {
+      die(3, `failed to write the repository list to "${args.out}": ${errMsg(err)}`);
+    }
+  }
+  process.exit(0);
+}
+
 function printUsage(): void {
   process.stdout.write(
     [
       "Usage: forgejo-warden reconcile [flags]",
+      "       forgejo-warden repos [flags]",
       "",
-      "Flags:",
+      "reconcile flags:",
       "  --config <path>               Governance config (YAML, JSON, or a .ts policy). Required.",
       "  --config-mode fold|run|check  How a .ts policy is evaluated (default: fold).",
       "  --mode dry-run|apply          Reconcile mode (default: dry-run).",
@@ -285,6 +401,17 @@ function printUsage(): void {
       "  --allow-guardrail-override    Apply even when guardrails trip.",
       "  --plan-json <file>            Write the plan as a chant change-set part (dry-run only).",
       "  --member <name>               Member the part names (default: the policy file's directory name).",
+      "",
+      "repos writes the policy's org's repository list, archived repos included, as",
+      "the JSON `chant workspace check --forge-repos <file>` reads.",
+      "",
+      "repos flags:",
+      "  --config <path>               Governance config (YAML, JSON, or a .ts policy). Required.",
+      "  --config-mode fold|run|check  How a .ts policy is evaluated (default: fold).",
+      "  --org <name>                  Org to list (default: the policy's only org).",
+      "  --out <file>                  File to write (default: stdout).",
+      "  --base-url <url>              Forgejo instance URL (or --base-url-env <VAR>).",
+      "  --token-env <VAR>             Env var holding the Forgejo API token.",
       "",
       "Exit codes: 0 success · 1 guardrail block · 2 arg/config error · 3 runtime error.",
       "",
@@ -306,7 +433,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
     await runReconcileCommand(argv.slice(1));
     return;
   }
-  die(2, `unknown subcommand: ${sub}. Did you mean "reconcile"?`);
+  if (sub === "repos") {
+    await runReposCommand(argv.slice(1));
+    return;
+  }
+  die(2, `unknown subcommand: ${sub}. Known subcommands: reconcile, repos`);
 }
 
 export async function run(argv: string[]): Promise<void> {

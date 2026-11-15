@@ -25,6 +25,12 @@ releases before `0.5.0` are not recorded here.
   file's directory name. A run where a cycle errored or was deferred writes a
   `failed` member with no plan digest. `--plan-json` cannot be combined with
   `--mode apply`. See [CLI.md](CLI.md#plan-as-a-change-set-part).
+- `forgejo-warden repos [--out <file>]` writes the policy's org's repository
+  list, archived repositories marked `archived: true`, as
+  `{ forge: "forgejo", org, repos: [{ url, archived? }] }`, the file
+  `chant workspace check --forge-repos` reads to report undeclared (WSP014)
+  and dropped (WSP015) repositories. `--org` picks the org when the policy
+  governs several. See [CLI.md](CLI.md#repos).
 
 ## 0.5.1 (2026-10-07)
 
