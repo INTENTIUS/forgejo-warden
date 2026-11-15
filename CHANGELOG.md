@@ -3,7 +3,7 @@
 Changes to `@intentius/forgejo-warden`. Versions follow semver, and
 releases before `0.5.0` are not recorded here.
 
-## Unreleased
+## 0.7.0 (2026-11-15)
 
 - `reconcile --plan-json` gives each entry its graph node id as its address,
   in place of `<resourceType>.<key>` (INTENTIUS/chant#5089). A change to a node
