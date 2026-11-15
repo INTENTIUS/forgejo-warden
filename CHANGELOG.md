@@ -13,7 +13,7 @@ releases before `0.5.0` are not recorded here.
   `chant workspace check` validates a member's `governance.yml` against
   `schemas/governance.schema.json`. The kind's graph reader
   (`dist/graph-reader.mjs`) gives `chant workspace graph` the orgs, repos and
-  teams the policy declares. The kind needs chant `>= 0.124.49`. See
+  teams the policy declares. See
   [README.md](README.md#as-a-chant-workspace-member).
 - The `@intentius/chant` and `@intentius/chant-lexicon-github` range moves from
   `^0.109.0` to `^0.124.95`.
@@ -34,6 +34,12 @@ releases before `0.5.0` are not recorded here.
   `chant workspace check --forge-repos` reads to report undeclared (WSP014)
   and dropped (WSP015) repositories. `--org` picks the org when the policy
   governs several. See [CLI.md](CLI.md#repos).
+- The `forge-governance` kind has a drift reader (`dist/drift-reader.mjs`, built
+  by `build:drift`), so `chant workspace drift --member <name>` reports a
+  governance member's drift: one record per change a dry run plans, on the
+  graph node it belongs to. It reads the instance URL and token from
+  `FORGEJO_URL` and `FORGEJO_TOKEN`. The kind now needs chant `>= 0.124.96`.
+  See [README.md](README.md#drift).
 
 ## 0.5.1 (2026-10-07)
 
