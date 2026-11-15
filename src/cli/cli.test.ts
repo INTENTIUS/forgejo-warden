@@ -52,6 +52,22 @@ describe("parseReconcileArgs", () => {
     );
   });
 
+  it("parses --plan-json and --member, refusing --plan-json with --mode apply and --member without --plan-json", () => {
+    const base = ["--config", "g.yml", "--base-url", "u", "--token-env", "T"];
+    const a = parseReconcileArgs(base);
+    expect(a.planJson).toBeUndefined();
+    expect(a.member).toBeUndefined();
+    const b = parseReconcileArgs([...base, "--plan-json", "plan.json", "--member", "gov"]);
+    expect(b.planJson).toBe("plan.json");
+    expect(b.member).toBe("gov");
+    const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
+    bad([...base, "--plan-json"]);
+    bad([...base, "--plan-json", "plan.json", "--member"]);
+    bad([...base, "--mode", "apply", "--plan-json", "plan.json"]);
+    bad([...base, "--member", "gov"]);
+    bad([...base, "--plan-json", "plan.json", "--member", ""]);
+  });
+
   it("throws code 2 on missing config / instance url / token / bad mode / unknown flag", () => {
     const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
     bad(["--base-url", "u", "--token-env", "T"]); // no config

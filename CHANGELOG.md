@@ -19,6 +19,12 @@ releases before `0.5.0` are not recorded here.
   preset exported as `export { reviewPreset as preset }` is reported as
   `preset`.
 - Node 24 or later is required (`engines.node` is `>=24`).
+- `reconcile --plan-json <file>` writes the run's plan as a chant change-set
+  part (`reconcilePlanPart` from `@intentius/chant/change-set`), with lexicon
+  `forgejo`. `--member <name>` names the member and defaults to the policy
+  file's directory name. A run where a cycle errored or was deferred writes a
+  `failed` member with no plan digest. `--plan-json` cannot be combined with
+  `--mode apply`. See [CLI.md](CLI.md#plan-as-a-change-set-part).
 
 ## 0.5.1 (2026-10-07)
 
