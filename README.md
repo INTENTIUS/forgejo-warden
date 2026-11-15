@@ -113,25 +113,25 @@ misspelled field fails `chant workspace check` before a reconcile silently leave
 
 `chant workspace drift --member <name>` reads a governance member through the kind's drift reader. The reader loads
 the member's `governance.yml` (or its `governance.ts` when there is no YAML file), runs every cycle as a dry run
-against the Forgejo instance, and answers with chant's drift stream: one record per planned change, engine `warden`,
-read `plan`. It never applies anything.
+against the Forgejo instance, and answers with chant's drift stream, engine `warden`, read `live-read`. It never
+applies anything.
 
-| Planned change | Drift status |
-|---|---|
-| create: declared, absent on the forge | `pending` |
-| update: a declared field differs | `drifted`, with each field as an attribute (`before` the policy's value, `after` the forge's) |
-| delete: on the forge, undeclared, in an `owned` collection | `undeclared` |
+There is one record per node the graph reader draws, at the node's id (`org/<org>`, `repo/<org>/<repo>`,
+`team/<org>/<team>`, `protection/<org>/<repo>/<rule>`), so chant colours the member's graph. A node with no planned
+change under it is `in-sync`. A node with planned changes is `drifted`, each change one attribute: an update gives
+`<type>[#<key>].<field>` with `before` the declared value and `after` the forge's, a create `<type>[#<key>]` with the
+declared value, a delete `<type>[#<key>]` with the live one (`org-settings.<field>` for the org's settings). Org
+members, secrets, variables and webhooks count under the org node; a team's members and repos under the team; a
+repo's webhooks, secrets and variables under the repo. Secrets, variables and webhooks carry no values.
 
-A record's address is the graph node it belongs to where the graph reader draws one (`org/<org>` for org settings,
-`repo/<org>/<repo>`, `team/<org>/<team>`, `protection/<org>/<repo>/<rule>`), so chant colours that node, and
-`<resourceType>/<org>/<key>` for the rest (team members, webhooks, secrets, variables, repo baselines). A forge that
-matches the policy gives no records. A cycle that fails is a `not-observed` record at `cycle/<org>/<cycle>` with reason
-`read-failed`, so a read that did not finish never reads as clean.
+A cycle that fails leaves the nodes of its org `not-observed` with reason `read-failed` (or `drifted` with the failure
+noted, where another cycle found drift), so a read that did not finish never reads as clean.
 
-chant runs the reader in its own process, so the credentials come from that process's environment: the instance URL
-from `FORGEJO_URL` and the API token from `FORGEJO_TOKEN` (the kind's config names both). When either is unset the
-read is refused with `no-drift-read` and the forge is not called. `--read` other than `plan`, `--stack` and `--resource`
-are refused (`read-unsupported`, `resource-unsupported`): a warden plans whole orgs. Drift needs chant `>= 0.124.96`.
+chant runs the reader in its own process, so the credentials come from that process's environment: the API token from
+`FORGEJO_TOKEN` and the instance URL from `FORGEJO_URL`. When either is unset, or the member has no policy, the read is
+refused with `no-drift-read` and the forge is not called. `--resource <node id>` reads one declared node (its org is
+reconciled); an undeclared one is refused with `no-drift-read`. `--read` other than `live-read`, and `--stack`, are
+refused with `read-unsupported`. Drift needs chant `>= 0.124.96`.
 
 ## Tests
 

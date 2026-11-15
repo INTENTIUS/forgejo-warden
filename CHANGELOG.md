@@ -36,8 +36,9 @@ releases before `0.5.0` are not recorded here.
   governs several. See [CLI.md](CLI.md#repos).
 - The `forge-governance` kind has a drift reader (`dist/drift-reader.mjs`, built
   by `build:drift`), so `chant workspace drift --member <name>` reports a
-  governance member's drift: one record per change a dry run plans, on the
-  graph node it belongs to. It reads the instance URL and token from
+  governance member's drift: one record per node of the member's graph,
+  `drifted` with the changes a dry run plans under it as attributes, or
+  `in-sync`. It reads the instance URL and token from
   `FORGEJO_URL` and `FORGEJO_TOKEN`. The kind now needs chant `>= 0.124.96`.
   See [README.md](README.md#drift).
 

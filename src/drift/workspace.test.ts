@@ -93,12 +93,18 @@ describe("chant workspace drift over the forge-governance kind", () => {
       const drifted = await readWorkspaceDrift({ cwd: ws, member: "forge" });
       if ("error" in drifted) throw new Error(`${drifted.error.code}: ${drifted.error.message}`);
       const doc = driftReadDocument("forge", drifted);
-      expect(doc.records.map((r) => [r.member, r.engine, r.address, r.status, r.node])).toEqual([["forge", "warden", "repo/acme/api", "drifted", "forge/repo/acme/api"]]);
+      expect(doc.records.map((r) => [r.member, r.engine, r.address, r.status, r.node])).toEqual([
+        ["forge", "warden", "org/acme", "in-sync", "forge/org/acme"],
+        ["forge", "warden", "repo/acme/api", "drifted", "forge/repo/acme/api"],
+      ]);
 
       vi.stubGlobal("fetch", forgejo({ "GET /orgs/acme/repos?limit=50&page=1": [{ name: "api", has_wiki: false }] }));
       const clean = await readWorkspaceDrift({ cwd: ws, member: "forge" });
       if ("error" in clean) throw new Error(`${clean.error.code}: ${clean.error.message}`);
-      expect(driftReadDocument("forge", clean).records).toEqual([]);
+      expect(driftReadDocument("forge", clean).records.map((r) => [r.address, r.status, r.node])).toEqual([
+        ["org/acme", "in-sync", "forge/org/acme"],
+        ["repo/acme/api", "in-sync", "forge/repo/acme/api"],
+      ]);
     } finally {
       vi.unstubAllEnvs();
     }
