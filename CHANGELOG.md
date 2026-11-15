@@ -3,7 +3,7 @@
 Changes to `@intentius/forgejo-warden`. Versions follow semver, and
 releases before `0.5.0` are not recorded here.
 
-## Unreleased
+## 0.6.0 (2026-11-14)
 
 - `--config` is optional for `reconcile` and `repos`. Without it the policy is
   `governance.yml` in the working directory, or `governance.ts` there when no
