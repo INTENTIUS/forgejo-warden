@@ -1,6 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Ajv2020 from "ajv/dist/2020.js";
 import { afterAll, describe, expect, test } from "vitest";
 import { parse } from "yaml";
 import { readGovernance } from "./reader.js";
@@ -67,5 +70,36 @@ describe("the reader module", () => {
     mkdirSync(join(dir, "m"));
     writeFileSync(join(dir, "m", "governance.yml"), POLICY);
     expect(read({ dir: join(dir, "m"), config: {} }).nodes).toHaveLength(6);
+  });
+});
+
+describe("the reader's output against chant's graph schema", () => {
+  // chant-graph/v1, the schema `chant graph --format ir` output follows. chant
+  // does not export the file, so it is read beside the workspace schemas it does.
+  const workspaceSchema = createRequire(import.meta.url).resolve("@intentius/chant/workspace/workspace-kinds.schema.json");
+  const graphSchema = JSON.parse(readFileSync(join(dirname(workspaceSchema), "..", "graph-schema", "graph.schema.json"), "utf-8"));
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  ajv.addSchema(graphSchema);
+  const validate = ajv.compile({ $ref: `${graphSchema.$id}#/$defs/GraphIR` });
+
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const kind = JSON.parse(readFileSync(join(root, "workspace-kinds.json"), "utf-8")).kinds[0];
+  const example = read({ dir: join(root, "examples"), config: kind.graph.config });
+
+  test("the example policy's graph is GraphIR", () => {
+    expect(example.nodes.length).toBeGreaterThan(0);
+    expect(validate(example), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("a graph with dangling references is GraphIR", () => {
+    const g = readGovernance(parse(POLICY), "governance.yml");
+    expect(g.dangling).toBeDefined();
+    expect(validate(g), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("the schema refuses a misspelled node field", () => {
+    const bad = structuredClone(example) as any;
+    bad.nodes[0].attributes = bad.nodes[0].attrs;
+    expect(validate(bad)).toBe(false);
   });
 });

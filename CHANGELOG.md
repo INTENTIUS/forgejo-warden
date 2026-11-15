@@ -10,7 +10,8 @@ releases before `0.5.0` are not recorded here.
   `chant workspace check` validates a member's `governance.yml` against
   `schemas/governance.schema.json`. The kind's graph reader
   (`dist/graph-reader.mjs`) gives `chant workspace graph` the orgs, repos and
-  teams the policy declares. See [README.md](README.md#as-a-chant-workspace-member).
+  teams the policy declares. The kind needs chant `>= 0.124.49`. See
+  [README.md](README.md#as-a-chant-workspace-member).
 - The `@intentius/chant` and `@intentius/chant-lexicon-github` range moves from
   `^0.109.0` to `^0.124.95`.
 - `@intentius/tsad-reference` moves to `^2.3.0`. When a `.ts` policy is folded,
