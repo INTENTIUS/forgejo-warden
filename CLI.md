@@ -22,7 +22,7 @@ package.json at build time).
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--config <path>` | **required** | policy file (YAML, JSON, or a `.ts` policy; see below) |
+| `--config <path>` | `governance.yml` in the working directory | policy file (YAML, JSON, or a `.ts` policy; see below). When `governance.yml` is absent and `governance.ts` exists, that is read instead. With neither, exits 2 |
 | `--config-mode fold\|run\|check` | `fold` | how a `.ts` policy is evaluated: `fold` reduces it to its value without running it, `run` imports it, `check` does both and exits 2 if they differ |
 | `--mode dry-run\|apply` | `dry-run` | `dry-run` computes and prints plans; `apply` also mutates the instance (guardrails permitting) |
 | `--cycles <name[,name...]>` | all cycles | comma-separated subset of cycles to run, e.g. `--cycles org-settings,teams`. Unknown names exit 2 and list the known cycles |
@@ -179,7 +179,7 @@ chant workspace check --forge-repos forge-repos.json
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--config <path>` | **required** | policy file, read the same way as for `reconcile` |
+| `--config <path>` | `governance.yml` in the working directory | policy file, found and read the same way as for `reconcile` |
 | `--config-mode fold\|run\|check` | `fold` | how a `.ts` policy is evaluated, as for `reconcile` |
 | `--org <name>` | the policy's only org | the org to list; it must be one of the policy's orgs. A policy with several orgs needs it |
 | `--out <file>` | stdout | file to write the list to |
