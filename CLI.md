@@ -169,14 +169,14 @@ forgejo-warden reconcile \
 
 The drift is the same list `chant workspace drift` reports for the member
 ([README.md](README.md#drift)): each org, repo, team or branch protection rule
-with planned changes under it, the changes as attributes. The issue lists each
-such node with every attribute's declared and live values (secrets, variables
-and webhooks without values), and the nodes that could not be read. The run
+with planned changes under it, the changes as attributes. Each such node appears in the issue
+with every attribute's declared and live values (secrets, variables
+and webhooks without values). Nodes that could not be read are listed too. The run
 must cover every cycle, so `--drift-issue` with `--cycles` exits 2: a subset
 would report the other cycles' nodes as matching and close the issue.
 
-The issue lives in a repository on the instance the run governs, reached with
-the same `--base-url` and `--token-env` token, which therefore needs to read
+This issue sits in a repository on the instance the run governs. The run reaches it with
+the same `--base-url` and `--token-env` token, so that token must be able to read
 and write issues there. The repository is `--drift-issue-repo`, or the
 workflow's own repository from `FORGEJO_REPOSITORY` or `GITHUB_REPOSITORY` on
 a Forgejo Actions runner. With none of them the run exits 2 before reading

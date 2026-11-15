@@ -121,16 +121,16 @@ There is one record per node the graph reader draws, at the node's id (`org/<org
 change under it is `in-sync`. A node with planned changes is `drifted`, each change one attribute: an update gives
 `<type>[#<key>].<field>` with `before` the declared value and `after` the forge's, a create `<type>[#<key>]` with the
 declared value, a delete `<type>[#<key>]` with the live one (`org-settings.<field>` for the org's settings). Org
-members, secrets, variables and webhooks count under the org node; a team's members and repos under the team; a
-repo's webhooks, secrets and variables under the repo. Secrets, variables and webhooks carry no values.
+members and the org's secrets, variables and webhooks count under the org node. A team's members and repos count under
+the team. A repo's webhooks, secrets and variables count under the repo. Secrets, variables and webhooks carry no values.
 
 A cycle that fails leaves the nodes of its org `not-observed` with reason `read-failed` (or `drifted` with the failure
 noted, where another cycle found drift), so a read that did not finish never reads as clean.
 
 chant runs the reader in its own process, so the credentials come from that process's environment: the API token from
-`FORGEJO_TOKEN` and the instance URL from `FORGEJO_URL`. When either is unset, or the member has no policy, the read is
-refused with `no-drift-read` and the forge is not called. `--resource <node id>` reads one declared node (its org is
-reconciled); an undeclared one is refused with `no-drift-read`. `--read` other than `live-read`, and `--stack`, are
+`FORGEJO_TOKEN` and the instance URL from `FORGEJO_URL`. If either is unset or the member has no policy, the read is
+refused with `no-drift-read`, and no call reaches the forge. `--resource <node id>` reads a single declared node (its org is
+reconciled), and a node that is not declared is refused with `no-drift-read`. `--read` other than `live-read`, and `--stack`, are
 refused with `read-unsupported`. Drift needs chant `>= 0.124.96`.
 
 `reconcile --drift-issue` keeps one forge issue over the same records, opened while the forge drifts and closed when it
