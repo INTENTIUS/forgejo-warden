@@ -68,6 +68,25 @@ describe("parseReconcileArgs", () => {
     bad([...base, "--plan-json", "plan.json", "--member", ""]);
   });
 
+  it("parses --drift-issue and --drift-issue-repo, refusing them with --mode apply or alone", () => {
+    const base = ["--config", "g.yml", "--base-url", "u", "--token-env", "T"];
+    const a = parseReconcileArgs(base);
+    expect(a.driftIssue).toBe(false);
+    expect(a.driftIssueRepo).toBeUndefined();
+    const b = parseReconcileArgs([...base, "--drift-issue", "--drift-issue-repo", "acme/governance", "--member", "gov"]);
+    expect(b.driftIssue).toBe(true);
+    expect(b.driftIssueRepo).toBe("acme/governance");
+    expect(b.member).toBe("gov");
+    expect(b.planJson).toBeUndefined();
+    const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
+    bad([...base, "--mode", "apply", "--drift-issue"]);
+    bad([...base, "--drift-issue-repo", "acme/governance"]);
+    bad([...base, "--drift-issue", "--drift-issue-repo"]);
+    bad([...base, "--drift-issue", "--drift-issue-repo", "governance"]);
+    bad([...base, "--drift-issue", "--drift-issue-repo", "acme/gov/extra"]);
+    bad([...base, "--drift-issue", "--cycles", "teams"]);
+  });
+
   it("leaves config undefined when --config is omitted", () => {
     expect(parseReconcileArgs(["--base-url", "u", "--token-env", "T"]).config).toBeUndefined();
   });

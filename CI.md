@@ -68,6 +68,48 @@ jobs:
 workflow file works on any Forgejo. Hardcode `--base-url` instead if the policy
 repo lives on a different instance than the one it governs.
 
+### A scheduled drift issue
+
+To be told about drift rather than have the schedule correct it, run the
+scheduled job as a dry run with `--drift-issue`: one issue in the policy
+repository tracks the drift, is updated when it changes, and closes on the
+first run that finds the forge matching the policy again
+([CLI.md](CLI.md#drift-issue)). The token needs to read and write issues in
+the policy repository as well as read the managed orgs.
+
+```yaml
+# .forgejo/workflows/governance-drift.yml
+name: governance drift
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # nightly
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: docker
+    container:
+      image: node:24-bookworm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Dry-run and keep the drift issue
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_WARDEN_TOKEN }}
+        run: |
+          npx @intentius/forgejo-warden reconcile \
+            --config governance.yml \
+            --base-url ${{ github.server_url }} \
+            --token-env FORGEJO_TOKEN \
+            --mode dry-run \
+            --drift-issue
+```
+
+The issue goes to the workflow's own repository (`FORGEJO_REPOSITORY`) and
+links the run. Drop the `schedule` trigger from the apply step of the workflow
+above when this job replaces it.
+
 ## GitHub Actions
 
 If the policy repo lives on GitHub (governing a Forgejo instance elsewhere),
@@ -120,6 +162,11 @@ jobs:
             --token-env FORGEJO_TOKEN \
             --mode apply
 ```
+
+A policy repository on GitHub keeps its drift issue on the Forgejo instance
+it governs, so the scheduled dry run names a repository there with
+`--drift-issue-repo <owner/name>`; `GITHUB_REPOSITORY` would name the GitHub
+repository.
 
 ## Notes
 

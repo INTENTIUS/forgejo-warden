@@ -3,7 +3,8 @@
 Two subcommands. `reconcile` loads the policy and builds an authed client for
 your Forgejo instance, then runs the selected cycles and prints one plan per
 cycle per org. With `--plan-json` it also writes the plan as a chant
-change-set part. `repos` writes the policy's org's repository list for
+change-set part, and with `--drift-issue` it keeps one forge issue tracking
+the drift a dry run finds. `repos` writes the policy's org's repository list for
 `chant workspace check --forge-repos` (see "repos" below).
 
 ```bash
@@ -32,7 +33,9 @@ package.json at build time).
 | `--removal-cap-fraction <f>` | `0.25` | removal-cap threshold, a number in (0,1]; values outside that range exit 2 (see "Guardrails" below) |
 | `--allow-guardrail-override` | off | apply even when a guardrail trips (the plan still prints the guardrail block) |
 | `--plan-json <file>` | none | also write the plan to the file as a chant change-set part (see "Plan as a change-set part" below). Nothing is applied: combining it with `--mode apply` exits 2 |
-| `--member <name>` | the name of the policy file's directory | the workspace member the `--plan-json` part names. Giving it without `--plan-json` exits 2 |
+| `--member <name>` | the name of the policy file's directory | the workspace member the `--plan-json` part and the `--drift-issue` records name. Giving it without either flag exits 2 |
+| `--drift-issue` | off | keep one issue tracking the drift this dry run finds (see "Drift issue" below). Combining it with `--mode apply` or `--cycles` exits 2 |
+| `--drift-issue-repo <owner/name>` | `FORGEJO_REPOSITORY`, else `GITHUB_REPOSITORY` | the repository on the governed instance that holds the drift issue. Giving it without `--drift-issue`, or a value that is not `owner/name`, exits 2 |
 
 Cycle names (see [CYCLES.md](CYCLES.md)): `org-settings`, `membership`, `teams`,
 `repo-settings`, `branch-protection`, `repo-baseline`, `secrets-variables`,
@@ -141,6 +144,54 @@ the member's status is `failed`, its `planDigest` is `null` and its `error`
 says which cycles are missing. The entries the other cycles planned stay in
 the part. Once the cycles have run, the file is written whatever the exit
 code.
+
+## Drift issue
+
+`--drift-issue` turns a scheduled dry run into one issue that tracks the
+governance drift, instead of a job log nobody reads. It passes the run's drift
+to `keepDriftIssue` from `@intentius/chant/drift-issue`:
+
+- a run that finds drift opens the issue, or updates the open one when the
+  drift changed. A run that finds the same drift leaves it as it is, so a
+  nightly schedule does not open a second issue or edit the first;
+- a run that finds no drift closes the open issue with a comment;
+- a run where a cycle failed and found no drift leaves the open issue alone,
+  since it cannot say the forge matches.
+
+```bash
+forgejo-warden reconcile \
+  --config governance.yml \
+  --base-url https://forgejo.example.com \
+  --token-env FORGEJO_TOKEN \
+  --drift-issue \
+  --drift-issue-repo acme/governance
+```
+
+The drift is the same list `chant workspace drift` reports for the member
+([README.md](README.md#drift)): each org, repo, team or branch protection rule
+with planned changes under it, the changes as attributes. The issue lists each
+such node with every attribute's declared and live values (secrets, variables
+and webhooks without values), and the nodes that could not be read. The run
+must cover every cycle, so `--drift-issue` with `--cycles` exits 2: a subset
+would report the other cycles' nodes as matching and close the issue.
+
+The issue lives in a repository on the instance the run governs, reached with
+the same `--base-url` and `--token-env` token, which therefore needs to read
+and write issues there. The repository is `--drift-issue-repo`, or the
+workflow's own repository from `FORGEJO_REPOSITORY` or `GITHUB_REPOSITORY` on
+a Forgejo Actions runner. With none of them the run exits 2 before reading
+the forge. A policy repository on GitHub that governs a Forgejo instance
+passes `--drift-issue-repo` naming a repository on that instance.
+
+One issue is kept per instance and policy: the hidden marker on its first line
+names the instance's host and the policy's orgs
+(`<!-- forgejo-warden:drift forgejo.example.com/acme -->`), and its title is
+`Governance drift on forgejo.example.com/acme`. An issue closed by hand stays
+closed, and the next drift opens a new one.
+
+The run prints `Drift issue: <action>` with the issue's number and URL
+(`opened`, `updated`, `unchanged`, `closed`, `left` or `none`). A dry run with
+drift still exits 0. When the forge refuses the issue call the run exits 3.
 
 ## Guardrails
 

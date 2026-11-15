@@ -41,6 +41,15 @@ releases before `0.5.0` are not recorded here.
   `in-sync`. It reads the instance URL and token from
   `FORGEJO_URL` and `FORGEJO_TOKEN`. The kind now needs chant `>= 0.124.96`.
   See [README.md](README.md#drift).
+- `reconcile --drift-issue` keeps one issue tracking the drift a dry run
+  finds, through `keepDriftIssue` from `@intentius/chant/drift-issue`: drift
+  opens or updates it, the same drift leaves it alone, and a clean run closes
+  it. The records are the drift reader's. The issue lives in
+  `--drift-issue-repo <owner/name>`, or the workflow's repository
+  (`FORGEJO_REPOSITORY`, `GITHUB_REPOSITORY`), on the governed instance.
+  `--drift-issue` cannot be combined with `--mode apply` or `--cycles`, and `--member` now
+  also names the drift records. See [CLI.md](CLI.md#drift-issue) and the
+  scheduled job in [CI.md](CI.md#a-scheduled-drift-issue).
 
 ## 0.5.1 (2026-10-07)
 
