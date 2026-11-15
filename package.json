@@ -12,6 +12,9 @@
   "bugs": {
     "url": "https://github.com/INTENTIUS/forgejo-warden/issues"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -31,18 +34,19 @@
     "test:e2e:run": "vitest run --config vitest.e2e.config.ts",
     "e2e:up": "bash e2e/bootstrap.sh",
     "e2e:down": "docker compose -f e2e/docker-compose.yml down -v",
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --banner:js=\"import{createRequire as __cr}from'module';import{fileURLToPath as __ftp}from'url';import{dirname as __dn}from'path';const require=__cr(import.meta.url);const __filename=__ftp(import.meta.url);const __dirname=__dn(__filename);\" --external:@intentius/tsad-reference --outfile=dist/cli.js && chmod +x dist/cli.js && esbuild src/index.ts --bundle --platform=node --format=esm --external:@intentius/chant --external:@intentius/tsad-reference --banner:js=\"import{createRequire as __cr}from'module';import{fileURLToPath as __ftp}from'url';import{dirname as __dn}from'path';const require=__cr(import.meta.url);const __filename=__ftp(import.meta.url);const __dirname=__dn(__filename);\" --outfile=dist/index.js && npm run build:types && npm run build:graph",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --banner:js=\"import{createRequire as __cr}from'module';import{fileURLToPath as __ftp}from'url';import{dirname as __dn}from'path';const require=__cr(import.meta.url);const __filename=__ftp(import.meta.url);const __dirname=__dn(__filename);\" --external:@intentius/tsad-reference --outfile=dist/cli.js && chmod +x dist/cli.js && esbuild src/index.ts --bundle --platform=node --format=esm --external:@intentius/chant --external:@intentius/tsad-reference --banner:js=\"import{createRequire as __cr}from'module';import{fileURLToPath as __ftp}from'url';import{dirname as __dn}from'path';const require=__cr(import.meta.url);const __filename=__ftp(import.meta.url);const __dirname=__dn(__filename);\" --outfile=dist/index.js && npm run build:types && npm run build:graph && npm run build:drift",
     "prepublishOnly": "npm run build",
     "build:graph": "esbuild src/graph/entry.ts --bundle --platform=node --format=esm --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\" --outfile=dist/graph-reader.mjs",
+    "build:drift": "esbuild src/drift/entry.ts --bundle --platform=node --format=esm --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\" --external:@intentius/tsad-reference --outfile=dist/drift-reader.mjs",
     "build:types": "tsc -p tsconfig.types.json"
   },
   "dependencies": {
-    "@intentius/chant": "^0.109.0",
+    "@intentius/chant": "^0.124.96",
     "yaml": "^2.9.0",
-    "@intentius/tsad-reference": "^2.2.0"
+    "@intentius/tsad-reference": "^2.3.0"
   },
   "devDependencies": {
-    "@intentius/chant-lexicon-github": "^0.109.0",
+    "@intentius/chant-lexicon-github": "^0.124.96",
     "@types/node": "^22.0.0",
     "ajv": "^8.20.0",
     "esbuild": "^0.28.0",

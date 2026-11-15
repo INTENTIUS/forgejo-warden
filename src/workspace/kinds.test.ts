@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test, expect } from "vitest";
@@ -18,6 +19,13 @@ const kind = kinds.kinds[0];
 const schema = readJson(kind.memberFile.schema);
 const validate = new Ajv2020({ allErrors: true, strict: false }).compile(schema);
 
+// chant's own schema for a kinds file, as published at its
+// ./workspace/*.schema.json subpath. memberFile needs chant 0.124.48,
+// graph.reader 0.124.49 and drift.reader 0.124.96; an older chant drops the
+// kind with WSP002.
+const kindsSchemaPath = createRequire(import.meta.url).resolve("@intentius/chant/workspace/workspace-kinds.schema.json");
+const validateKinds = new Ajv2020({ allErrors: true, strict: false }).compile(JSON.parse(readFileSync(kindsSchemaPath, "utf-8")));
+
 const sample = parseYaml(readFileSync(join(root, "examples", "governance.yml"), "utf-8"));
 
 describe("forge-governance kinds file", () => {
@@ -29,6 +37,20 @@ describe("forge-governance kinds file", () => {
     expect(kind.precedence).toBeLessThan(500);
     expect(kind.outputs).toEqual(["repos", "teams"]);
     expect(kind.graph.reader).toBe("dist/graph-reader.mjs");
+    expect(kind.drift).toEqual({
+      reader: "dist/drift-reader.mjs",
+      config: { dir: "{dir}", file: "governance.yml" },
+    });
+  });
+
+  test("the build writes the drift reader the kind names", () => {
+    expect(pkg.scripts["build:drift"]).toContain("src/drift/entry.ts");
+    expect(pkg.scripts["build:drift"]).toContain(`--outfile=${kind.drift.reader}`);
+    expect(pkg.scripts.build).toContain("npm run build:drift");
+  });
+
+  test("passes chant's workspace-kinds schema", () => {
+    expect(validateKinds(kinds), JSON.stringify(validateKinds.errors)).toBe(true);
   });
 
   test("probes for the file it checks", () => {

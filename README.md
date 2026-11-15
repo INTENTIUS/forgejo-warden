@@ -46,7 +46,7 @@ stay off entirely until you mark an org `owned` in the policy.
 - A Forgejo API token ([SETUP.md](SETUP.md) has the click-path and scopes; a
   dry-run needs only read). Any self-hosted Forgejo works, and so does
   [Codeberg](https://codeberg.org); point `--base-url` at the instance.
-- Node 22+.
+- Node 24+.
 
 About ten minutes gets you to a first dry-run plan. The quickest probe needs
 no clone at all:
@@ -94,17 +94,47 @@ as a member, so `chant workspace ls` and `chant workspace graph` list the policy
 The kind is data in `workspace-kinds.json`, exported at `@intentius/forgejo-warden/workspace-kinds`. chant reads it without
 importing the package.
 
+The kind needs chant `>= 0.124.96`: its `memberFile` arrived in `0.124.48`, its `graph.reader` in `0.124.49` and its
+`drift.reader` in `0.124.96`, and an older chant drops the kind with `WSP002`. `npm test` validates `workspace-kinds.json` against chant's
+`workspace-kinds.schema.json`, and the graph the reader draws for `examples/governance.yml` against chant's graph schema.
+
 | Part | Value |
 |---|---|
 | Probe | `governance.yml` directly in the member's directory |
 | Member file | `governance.yml` must pass `schemas/governance.schema.json`. `chant workspace check` reports a missing file, a file that does not parse, or a field the schema does not know as `WSP012` |
 | Outputs | `repos`, the repos in `orgs.<org>.repos`, and `teams`, the teams in `orgs.<org>.teams`, for [member links](https://intentius.io/chant/reference/workspace-declaration/#member-links) |
-| Graph | `graph.reader` names `dist/graph-reader.mjs`, which turns `governance.yml` into graph IR with no Forgejo call: nodes for the org, repos, teams and branch protection rules, and edges for a team's access to a repo (every repo of the org for a team with `includesAllRepositories`) and a rule's repo. The policy declares no rulesets or apps, so there are none. It draws the policy as declared; drift colouring needs a live read and is not part of it. Needs a chant that has [chant#4413](https://github.com/INTENTIUS/chant/issues/4413) |
+| Graph | `graph.reader` names `dist/graph-reader.mjs`, which turns `governance.yml` into graph IR with no Forgejo call: nodes for the org, repos, teams and branch protection rules, and edges for a team's access to a repo (every repo of the org for a team with `includesAllRepositories`) and a rule's repo. The policy declares no rulesets or apps, so there are none. It draws the policy as declared, with no Forgejo call |
+| Drift | `drift.reader` names `dist/drift-reader.mjs`, which `chant workspace drift --member <name>` runs for a member of the kind. See [Drift](#drift) below |
 
 The schema is stricter than the loader: the loader drops a field it does not know, and the schema refuses it, so a
-misspelled field fails `chant workspace check` before a reconcile silently leaves it unmanaged. A member kind with a
-`memberFile` needs a chant that has [chant#3672](https://github.com/INTENTIUS/chant/issues/3672); an older chant
-fails the kinds file with `WSP002`.
+misspelled field fails `chant workspace check` before a reconcile silently leaves it unmanaged.
+
+### Drift
+
+`chant workspace drift --member <name>` reads a governance member through the kind's drift reader. The reader loads
+the member's `governance.yml` (or its `governance.ts` when there is no YAML file), runs every cycle as a dry run
+against the Forgejo instance, and answers with chant's drift stream, engine `warden`, read `live-read`. It never
+applies anything.
+
+There is one record per node the graph reader draws, at the node's id (`org/<org>`, `repo/<org>/<repo>`,
+`team/<org>/<team>`, `protection/<org>/<repo>/<rule>`), so chant colours the member's graph. A node with no planned
+change under it is `in-sync`. A node with planned changes is `drifted`, each change one attribute: an update gives
+`<type>[#<key>].<field>` with `before` the declared value and `after` the forge's, a create `<type>[#<key>]` with the
+declared value, a delete `<type>[#<key>]` with the live one (`org-settings.<field>` for the org's settings). Org
+members and the org's secrets, variables and webhooks count under the org node. A team's members and repos count under
+the team. A repo's webhooks, secrets and variables count under the repo. Secrets, variables and webhooks carry no values.
+
+A cycle that fails leaves the nodes of its org `not-observed` with reason `read-failed` (or `drifted` with the failure
+noted, where another cycle found drift), so a read that did not finish never reads as clean.
+
+chant runs the reader in its own process, so the credentials come from that process's environment: the API token from
+`FORGEJO_TOKEN` and the instance URL from `FORGEJO_URL`. If either is unset or the member has no policy, the read is
+refused with `no-drift-read`, and no call reaches the forge. `--resource <node id>` reads a single declared node (its org is
+reconciled), and a node that is not declared is refused with `no-drift-read`. `--read` other than `live-read`, and `--stack`, are
+refused with `read-unsupported`. Drift needs chant `>= 0.124.96`.
+
+`reconcile --drift-issue` keeps one forge issue over the same records, opened while the forge drifts and closed when it
+matches the policy again ([CLI.md](CLI.md#drift-issue)).
 
 ## Tests
 

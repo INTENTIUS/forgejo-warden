@@ -52,9 +52,47 @@ describe("parseReconcileArgs", () => {
     );
   });
 
-  it("throws code 2 on missing config / instance url / token / bad mode / unknown flag", () => {
+  it("parses --plan-json and --member, refusing --plan-json with --mode apply and --member without --plan-json", () => {
+    const base = ["--config", "g.yml", "--base-url", "u", "--token-env", "T"];
+    const a = parseReconcileArgs(base);
+    expect(a.planJson).toBeUndefined();
+    expect(a.member).toBeUndefined();
+    const b = parseReconcileArgs([...base, "--plan-json", "plan.json", "--member", "gov"]);
+    expect(b.planJson).toBe("plan.json");
+    expect(b.member).toBe("gov");
     const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
-    bad(["--base-url", "u", "--token-env", "T"]); // no config
+    bad([...base, "--plan-json"]);
+    bad([...base, "--plan-json", "plan.json", "--member"]);
+    bad([...base, "--mode", "apply", "--plan-json", "plan.json"]);
+    bad([...base, "--member", "gov"]);
+    bad([...base, "--plan-json", "plan.json", "--member", ""]);
+  });
+
+  it("parses --drift-issue and --drift-issue-repo, refusing them with --mode apply or alone", () => {
+    const base = ["--config", "g.yml", "--base-url", "u", "--token-env", "T"];
+    const a = parseReconcileArgs(base);
+    expect(a.driftIssue).toBe(false);
+    expect(a.driftIssueRepo).toBeUndefined();
+    const b = parseReconcileArgs([...base, "--drift-issue", "--drift-issue-repo", "acme/governance", "--member", "gov"]);
+    expect(b.driftIssue).toBe(true);
+    expect(b.driftIssueRepo).toBe("acme/governance");
+    expect(b.member).toBe("gov");
+    expect(b.planJson).toBeUndefined();
+    const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
+    bad([...base, "--mode", "apply", "--drift-issue"]);
+    bad([...base, "--drift-issue-repo", "acme/governance"]);
+    bad([...base, "--drift-issue", "--drift-issue-repo"]);
+    bad([...base, "--drift-issue", "--drift-issue-repo", "governance"]);
+    bad([...base, "--drift-issue", "--drift-issue-repo", "acme/gov/extra"]);
+    bad([...base, "--drift-issue", "--cycles", "teams"]);
+  });
+
+  it("leaves config undefined when --config is omitted", () => {
+    expect(parseReconcileArgs(["--base-url", "u", "--token-env", "T"]).config).toBeUndefined();
+  });
+
+  it("throws code 2 on missing instance url / token / bad mode / unknown flag", () => {
+    const bad = (argv: string[]) => expect(() => parseReconcileArgs(argv)).toThrow(expect.objectContaining({ code: 2 }));
     bad(["--config", "g.yml", "--token-env", "T"]); // no base url
     bad(["--config", "g.yml", "--base-url", "u"]); // no token
     bad(["--config", "g.yml", "--base-url", "u", "--token-env", "T", "--mode", "nope"]);
