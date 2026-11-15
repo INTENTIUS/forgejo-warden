@@ -39,7 +39,7 @@ describe("forge-governance kinds file", () => {
     expect(kind.graph.reader).toBe("dist/graph-reader.mjs");
     expect(kind.drift).toEqual({
       reader: "dist/drift-reader.mjs",
-      config: { dir: "{dir}", file: "governance.yml", tokenEnv: "FORGEJO_TOKEN", baseUrlEnv: "FORGEJO_URL" },
+      config: { dir: "{dir}", file: "governance.yml" },
     });
   });
 
