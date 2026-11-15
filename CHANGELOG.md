@@ -3,6 +3,19 @@
 Changes to `@intentius/forgejo-warden`. Versions follow semver, and
 releases before `0.5.0` are not recorded here.
 
+## Unreleased
+
+- `reconcile --plan-json` gives each entry its graph node id as its address,
+  in place of `<resourceType>.<key>` (INTENTIUS/chant#5089). A change to a node
+  itself is the bare node id (`repo/acme/api`); any other change is
+  `<node id>#<resourceType>[<key>]` (`org/acme#member[bob]`). chant places the
+  entries on the same graph nodes as the drift reader's records, and two orgs
+  with a same-named repo no longer share an address. See
+  [CLI.md](CLI.md#plan-as-a-change-set-part).
+- The `@intentius/chant` and `@intentius/chant-lexicon-github` range moves to
+  `^0.124.97`, the first chant whose `reconcilePlanPart` takes an entry's
+  address.
+
 ## 0.6.0 (2026-11-14)
 
 - `--config` is optional for `reconcile` and `repos`. Without it the policy is

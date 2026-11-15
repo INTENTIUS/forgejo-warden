@@ -7,6 +7,10 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { composeChangeSet, readChangeSetPartFile } from "@intentius/chant/change-set";
+import { mapChangeSetToGraph } from "@intentius/chant/change-set-graph";
+import { driftAddress, governanceDrift } from "../drift/reader.js";
+import { readGovernance } from "../graph/reader.js";
+import type { ChangeSet } from "./diff.js";
 import { membershipCycle } from "../cycles/membership.js";
 import { makeClient } from "../cycles/_testutil.js";
 import { runReconcile, type Cycle } from "./runner.js";
@@ -41,8 +45,8 @@ describe("planPart", () => {
     const actions = part.entries.map((e) => [e.action, e.address, e.scope, e.lexicon, e.member]);
     expect(actions).toEqual(
       expect.arrayContaining([
-        ["create", "member.bob", "acme", "forgejo", "governance"],
-        ["delete", "member.carol", "acme", "forgejo", "governance"],
+        ["create", "org/acme#member[bob]", "acme", "forgejo", "governance"],
+        ["delete", "org/acme#member[carol]", "acme", "forgejo", "governance"],
       ]),
     );
     expect(part.entries).toHaveLength(2);
@@ -82,6 +86,59 @@ describe("planPart", () => {
     expect(part.member.error).toMatch(/broken @ acme errored in fetchLive/);
     // What the other cycles planned stays in the part.
     expect(part.entries).toHaveLength(2);
+  });
+});
+
+describe("planPart on the graph", () => {
+  /** Two orgs that each declare a repo named api. */
+  const policy: GovernanceConfig = {
+    orgs: {
+      acme: { repos: { api: { private: true } }, teams: { core: { permission: "write", members: [{ username: "ada" }] } } },
+      globex: { repos: { api: { private: false } } },
+    },
+  };
+
+  const changeSets: ChangeSet[] = [
+    {
+      org: "acme",
+      entries: [
+        // The repo node's own change.
+        { kind: "update", resourceType: "repo", key: "api", before: { private: false }, after: { private: true }, fields: [{ field: "private", before: false, after: true }] },
+        // Changes under a node: a repo's secret, a team's member, the org's member.
+        { kind: "create", resourceType: "repo-secret", key: "api/TOKEN", after: { name: "TOKEN" } },
+        { kind: "create", resourceType: "team-member", key: "core/ada", after: { username: "ada" } },
+        { kind: "delete", resourceType: "member", key: "carol", before: { username: "carol" } },
+      ],
+    },
+    // The other org's same-named repo.
+    { org: "globex", entries: [{ kind: "create", resourceType: "repo", key: "api", after: { name: "api", private: false } }] },
+  ];
+
+  it("places every entry on the node the drift reader gives for the same change", () => {
+    const ir = readGovernance(policy);
+    const part = readChangeSetPartFile(roundTrip(planPart({ member: "governance", changeSets })), "warden", "governance", PLAN_PART_LEXICON);
+    const addresses = part.entries.map((e) => e.address);
+    expect(new Set(addresses).size).toBe(addresses.length);
+
+    const doc = mapChangeSetToGraph(composeChangeSet([part]), { member: null, at: null, ids: ir.nodes.map((n) => n.id) });
+    expect(doc.entries).toHaveLength(5);
+    for (const e of doc.entries) {
+      expect(e.node, e.address).toBe(driftAddress(e.scope!, { resourceType: e.type, key: e.name! }));
+    }
+    expect(doc.entries.map((e) => [e.scope, e.type, e.node]).sort()).toEqual(
+      [
+        ["acme", "member", "org/acme"],
+        ["acme", "repo", "repo/acme/api"],
+        ["acme", "repo-secret", "repo/acme/api"],
+        ["acme", "team-member", "team/acme/core"],
+        ["globex", "repo", "repo/globex/api"],
+      ].sort(),
+    );
+
+    // The drift reader's drifted records sit on the same nodes.
+    const { records } = governanceDrift({ member: "governance", observedAt: "2026-11-15T00:00:00.000Z", policy, changeSets });
+    const drifted = records.filter((r) => r.status === "drifted").map((r) => r.address);
+    expect(new Set(drifted)).toEqual(new Set(doc.entries.map((e) => e.node)));
   });
 });
 

@@ -94,6 +94,32 @@ export function driftAddress(org: string, entry: Pick<ChangeSetEntry, "resourceT
   }
 }
 
+/**
+ * Each node kind's own resource type: the change that is the node itself
+ * rather than something under it.
+ */
+const NODE_OWN_TYPE: Readonly<Record<string, string>> = {
+  org: "org-settings",
+  repo: "repo",
+  team: "team",
+  protection: "branch-protection",
+};
+
+/**
+ * A planned change's address in a `--plan-json` part (INTENTIUS/chant#5089):
+ * the node id {@link driftAddress} gives when the change is that node's own
+ * type (a repo's `repo` change is `repo/<org>/<name>`), otherwise
+ * `<node id>#<resourceType>[<key>]` (`repo/acme/api#repo-secret[api/TOKEN]`).
+ * chant places the entry on the node before the first `#`, so plan entries sit
+ * on the same nodes as the drift records, and the org in the node id keeps two
+ * orgs' same-named resources apart.
+ */
+export function planAddress(org: string, entry: Pick<ChangeSetEntry, "resourceType" | "key">): string {
+  const node = driftAddress(org, entry);
+  const kind = node.slice(0, node.indexOf("/"));
+  return NODE_OWN_TYPE[kind] === entry.resourceType ? node : `${node}#${entry.resourceType}[${entry.key}]`;
+}
+
 /** Resource types whose values can hold a secret: their attributes carry no values. */
 const SENSITIVE_TYPES = new Set(["org-secret", "repo-secret", "org-variable", "repo-variable", "org-webhook", "repo-webhook"]);
 

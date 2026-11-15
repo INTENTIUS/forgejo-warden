@@ -124,6 +124,9 @@ declared value, a delete `<type>[#<key>]` with the live one (`org-settings.<fiel
 members and the org's secrets, variables and webhooks count under the org node. A team's members and repos count under
 the team. A repo's webhooks, secrets and variables count under the repo. Secrets, variables and webhooks carry no values.
 
+`reconcile --plan-json` addresses its entries by the same node ids, so a member's plan and its drift sit on the same
+nodes ([CLI.md](CLI.md#plan-as-a-change-set-part)).
+
 A cycle that fails leaves the nodes of its org `not-observed` with reason `read-failed` (or `drifted` with the failure
 noted, where another cycle found drift), so a read that did not finish never reads as clean.
 
