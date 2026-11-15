@@ -75,8 +75,15 @@ export interface RunReconcileOptions<TScope = unknown> {
 /** A cycle's result, with the origin of each drifted field when the policy was folded. */
 export type WardenCycleResult = CycleResult & { origins?: DriftOrigin[] };
 
-/** warden's reconcile result: chant's, with origins on each cycle when the policy was folded. */
-export type WardenReconcileResult = Omit<ReconcileResult, "cycles"> & { cycles: WardenCycleResult[] };
+/**
+ * warden's reconcile result: chant's, with origins on each cycle when the
+ * policy was folded, and every change set the run diffed (one per cycle and
+ * org, in run order), which `--plan-json` writes as a chant change-set part.
+ */
+export type WardenReconcileResult = Omit<ReconcileResult, "cycles"> & {
+  cycles: WardenCycleResult[];
+  changeSets: ChangeSet[];
+};
 
 /**
  * Derive an ownership predicate from an org's `owned` declaration.
@@ -135,9 +142,10 @@ export async function runReconcile<TScope = unknown>(
     requestBudget: opts.requestBudget,
   });
   const provenance = opts.provenance;
-  if (!provenance) return result;
+  if (!provenance) return { ...result, changeSets };
   return {
     ...result,
+    changeSets,
     cycles: result.cycles.map((cr, i) => {
       const cs = changeSets[i];
       if (!cs) return cr;

@@ -2,7 +2,8 @@
 
 One subcommand: `reconcile`. It loads the policy and builds an authed client
 for your Forgejo instance, then runs the selected cycles and prints one plan
-per cycle per org.
+per cycle per org. With `--plan-json` it also writes the plan as a chant
+change-set part.
 
 ```bash
 forgejo-warden reconcile \
@@ -29,6 +30,8 @@ package.json at build time).
 | `--token-env <VAR>` | **required** | env var holding the Forgejo API token. The token itself never appears in argv |
 | `--removal-cap-fraction <f>` | `0.25` | removal-cap threshold, a number in (0,1]; values outside that range exit 2 (see "Guardrails" below) |
 | `--allow-guardrail-override` | off | apply even when a guardrail trips (the plan still prints the guardrail block) |
+| `--plan-json <file>` | none | also write the plan to the file as a chant change-set part (see "Plan as a change-set part" below). Nothing is applied: combining it with `--mode apply` exits 2 |
+| `--member <name>` | the name of the policy file's directory | the workspace member the `--plan-json` part names. Giving it without `--plan-json` exits 2 |
 
 Cycle names (see [CYCLES.md](CYCLES.md)): `org-settings`, `membership`, `teams`,
 `repo-settings`, `branch-protection`, `repo-baseline`, `secrets-variables`,
@@ -108,6 +111,35 @@ print `ERROR in <cycle> @ <org>` on
 stderr, and cycles skipped because the request budget ran out print
 `DEFERRED (budget): ...` (the budget defaults to 1000 API requests per run and
 is not currently exposed as a flag).
+
+## Plan as a change-set part
+
+`--plan-json <file>` writes the run's plan as one part of a chant change-set
+document, so a governance member's planned changes can sit next to the rest of
+a workspace's plan. The file is the output of `reconcilePlanPart` from
+`@intentius/chant/change-set`, and chant reads it back with
+`readChangeSetPartFile(part, "warden", member, "forgejo")`.
+
+```bash
+forgejo-warden reconcile \
+  --config members/governance/governance.yml \
+  --base-url https://forgejo.example.com \
+  --token-env FORGEJO_TOKEN \
+  --plan-json governance.plan.json
+```
+
+The part's member is named by `--member`, or by the policy file's directory
+(`governance` above) when the flag is absent; a policy at the filesystem root
+needs `--member`. Its planner is `warden` and its lexicon `forgejo`. Each
+planned change is one entry with the address `<resourceType>.<key>` and the
+org as its scope, and the member's `planDigest` covers every change set the
+run planned.
+
+When a cycle errors or the request budget defers one, the plan is incomplete:
+the member's status is `failed`, its `planDigest` is `null` and its `error`
+says which cycles are missing. The entries the other cycles planned stay in
+the part. Once the cycles have run, the file is written whatever the exit
+code.
 
 ## Guardrails
 
