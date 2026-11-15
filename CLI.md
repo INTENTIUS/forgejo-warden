@@ -1,9 +1,10 @@
 # CLI
 
-One subcommand: `reconcile`. It loads the policy and builds an authed client
-for your Forgejo instance, then runs the selected cycles and prints one plan
-per cycle per org. With `--plan-json` it also writes the plan as a chant
-change-set part.
+Two subcommands. `reconcile` loads the policy and builds an authed client for
+your Forgejo instance, then runs the selected cycles and prints one plan per
+cycle per org. With `--plan-json` it also writes the plan as a chant
+change-set part. `repos` writes the policy's org's repository list for
+`chant workspace check --forge-repos` (see "repos" below).
 
 ```bash
 forgejo-warden reconcile \
@@ -156,13 +157,64 @@ policy marks with `owned:` (see [POLICY.md](POLICY.md), "Delete semantics").
 For an org without `owned`, plans never contain deletes and the cap has nothing
 to block.
 
+## repos
+
+`repos` lists every repository of the org the policy governs, archived ones
+included, and writes the list in the format
+`chant workspace check --forge-repos <file>` reads. chant never asks the forge
+itself: it compares this list with an org workspace's `repo` members, and
+reports a repository the forge lists that no member names (WSP014) and a
+member naming a repository the forge no longer lists (WSP015). An archived
+repository need not be declared.
+
+```bash
+forgejo-warden repos \
+  --config governance.yml \
+  --base-url https://forgejo.example.com \
+  --token-env FORGEJO_TOKEN \
+  --out forge-repos.json
+
+chant workspace check --forge-repos forge-repos.json
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--config <path>` | **required** | policy file, read the same way as for `reconcile` |
+| `--config-mode fold\|run\|check` | `fold` | how a `.ts` policy is evaluated, as for `reconcile` |
+| `--org <name>` | the policy's only org | the org to list; it must be one of the policy's orgs. A policy with several orgs needs it |
+| `--out <file>` | stdout | file to write the list to |
+| `--base-url <url>` | one of the two URL flags is **required** | Forgejo instance URL |
+| `--base-url-env <VAR>` | none | env var holding the instance URL |
+| `--token-env <VAR>` | **required** | env var holding the Forgejo API token; it needs read access to the org's repositories, private ones included |
+
+The output names the forge and the org and lists each repository by its web
+URL, sorted, with `archived: true` on an archived one:
+
+```json
+{
+  "forge": "forgejo",
+  "org": "acme",
+  "repos": [
+    { "url": "https://forgejo.example.com/acme/api" },
+    { "url": "https://forgejo.example.com/acme/legacy", "archived": true }
+  ]
+}
+```
+
+chant matches URLs by host, owner and name, so a member that names the
+repository by its https or ssh clone URL, with or without `.git`, matches the
+web URL here. An org the instance does not have exits 3 rather than writing
+an empty list, which chant would read as every member dropped. A policy with
+no org, several orgs and no `--org`, or an `--org` the policy does not govern
+exits 2.
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | Success: the plan printed (dry-run), or apply completed with no failures. |
 | 1 | Guardrail block: apply mode, at least one guardrail tripped, and `--allow-guardrail-override` was not set. |
-| 2 | Argument or config error (unknown flag, unknown cycle, unreadable or invalid config, missing auth). |
-| 3 | Runtime error (API failure, an errored cycle, or failed apply entries). |
+| 2 | Argument or config error (unknown flag, unknown cycle, unreadable or invalid config, missing auth, an org `repos` cannot pick). |
+| 3 | Runtime error (API failure, an errored cycle, failed apply entries, or a file that could not be written). |
 
 In CI, treat 0 as pass and 1 as "needs a human"; treat 2 and 3 as failures.
