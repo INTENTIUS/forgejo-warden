@@ -133,6 +133,9 @@ refused with `no-drift-read` and the forge is not called. `--resource <node id>`
 reconciled); an undeclared one is refused with `no-drift-read`. `--read` other than `live-read`, and `--stack`, are
 refused with `read-unsupported`. Drift needs chant `>= 0.124.96`.
 
+`reconcile --drift-issue` keeps one forge issue over the same records, opened while the forge drifts and closed when it
+matches the policy again ([CLI.md](CLI.md#drift-issue)).
+
 ## Tests
 
 `npm test` runs the unit suite (mock-client, fully offline). The

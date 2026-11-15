@@ -5,7 +5,8 @@
  * Subcommands:
  *   reconcile   Load config, build an authed client, run selected cycles.
  *               `--plan-json <file>` also writes the plan as a chant
- *               change-set part.
+ *               change-set part; `--drift-issue` keeps one forge issue
+ *               tracking the drift a dry run finds.
  *   repos       Write the policy's org's repository list in the format
  *               `chant workspace check --forge-repos` reads.
  *
@@ -25,6 +26,16 @@ import { writeFileSync } from "node:fs";
 import { runReconcile, type Cycle } from "./reconcile/runner.js";
 import { defaultMemberName, planPart } from "./reconcile/plan-part.js";
 import { forgeRepoList, pickOrg } from "./repos.js";
+import { governanceDrift } from "./drift/reader.js";
+import {
+  describeDriftIssue,
+  driftIssueEnvironment,
+  driftIssueForge,
+  driftIssueRepo,
+  driftIssueRunUrl,
+  isRepoName,
+  keepGovernanceDriftIssue,
+} from "./drift/issue.js";
 import { CYCLE_REGISTRY } from "./cli/registry.js";
 import type { GovernanceConfig } from "./config/types.js";
 import type { PolicyProvenance } from "./reconcile/origin.js";
@@ -58,8 +69,12 @@ export interface ReconcileArgs {
   removalCapFraction: number | undefined;
   /** File to write the run's plan to, as a chant change-set part. */
   planJson: string | undefined;
-  /** The workspace member the part names; undefined defaults to the policy directory's name. */
+  /** The workspace member the part and the drift records name; undefined defaults to the policy directory's name. */
   member: string | undefined;
+  /** Keep one forge issue tracking the drift this dry run finds. */
+  driftIssue: boolean;
+  /** `owner/name` of the repository the drift issue lives in; undefined reads the Actions environment. */
+  driftIssueRepo: string | undefined;
 }
 
 const KNOWN_FLAGS = new Set([
@@ -74,6 +89,8 @@ const KNOWN_FLAGS = new Set([
   "--removal-cap-fraction",
   "--plan-json",
   "--member",
+  "--drift-issue",
+  "--drift-issue-repo",
 ]);
 
 /** Parse reconcile argv. Pure: throws `CliError` (with exit code) on bad input. */
@@ -90,6 +107,8 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
     removalCapFraction: undefined,
     planJson: undefined,
     member: undefined,
+    driftIssue: false,
+    driftIssueRepo: undefined,
   };
 
   const need = (i: number, flag: string): string => {
@@ -150,6 +169,13 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
         args.member = need(++i, flag);
         if (args.member.trim() === "") throw new CliError(2, "--member requires a non-empty name");
         break;
+      case "--drift-issue":
+        args.driftIssue = true;
+        break;
+      case "--drift-issue-repo":
+        args.driftIssueRepo = need(++i, flag);
+        if (!isRepoName(args.driftIssueRepo)) throw new CliError(2, `--drift-issue-repo must be owner/name, got: ${args.driftIssueRepo}`);
+        break;
     }
     i++;
   }
@@ -159,8 +185,17 @@ export function parseReconcileArgs(argv: string[]): ReconcileArgs {
   if (args.planJson !== undefined && args.mode === "apply") {
     throw new CliError(2, "--plan-json writes a plan without applying it; it cannot be combined with --mode apply");
   }
-  if (args.member !== undefined && args.planJson === undefined) {
-    throw new CliError(2, "--member names the member of the --plan-json part; give it with --plan-json");
+  if (args.member !== undefined && args.planJson === undefined && !args.driftIssue) {
+    throw new CliError(2, "--member names the member of the --plan-json part or the drift records; give it with --plan-json or --drift-issue");
+  }
+  if (args.driftIssue && args.mode === "apply") {
+    throw new CliError(2, "--drift-issue tracks the drift a dry run finds; it cannot be combined with --mode apply");
+  }
+  if (args.driftIssue && args.cycles.length > 0) {
+    throw new CliError(2, "--drift-issue tracks the whole policy's drift; it cannot be combined with --cycles, whose run would read the other cycles' nodes as matching");
+  }
+  if (args.driftIssueRepo !== undefined && !args.driftIssue) {
+    throw new CliError(2, "--drift-issue-repo names the repository of the drift issue; give it with --drift-issue");
   }
 
   return args;
@@ -277,14 +312,30 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
   }
 
   let member: string | undefined;
-  if (args.planJson !== undefined) {
+  if (args.planJson !== undefined || args.driftIssue) {
     member = args.member ?? defaultMemberName(configPath);
-    if (!member) die(2, `cannot name the --plan-json member from "${configPath}"'s directory; give --member <name>`);
+    if (!member) die(2, `cannot name the member from "${configPath}"'s directory; give --member <name>`);
+  }
+
+  let issueRepo: string | undefined;
+  if (args.driftIssue) {
+    issueRepo = driftIssueRepo(args.driftIssueRepo);
+    if (!issueRepo) {
+      die(2, "--drift-issue needs the repository to keep the issue in: give --drift-issue-repo <owner/name>, or run where FORGEJO_REPOSITORY or GITHUB_REPOSITORY is set");
+    }
+    if (!isRepoName(issueRepo)) die(2, `the drift issue repository must be owner/name, got: ${issueRepo}`);
   }
 
   const baseUrl = args.baseUrl ?? env(args.baseUrlEnv!);
   const token = env(args.tokenEnv!);
   const client = createClient({ baseUrl, token });
+  if (args.driftIssue) {
+    try {
+      new URL(baseUrl);
+    } catch {
+      die(2, `--drift-issue needs an absolute instance URL, got: ${baseUrl}`);
+    }
+  }
 
   let cycles: Cycle[];
   if (args.cycles.length === 0) {
@@ -336,6 +387,22 @@ async function runReconcileCommand(argv: string[]): Promise<void> {
   for (const ce of result.errored) process.stderr.write(`ERROR in ${ce.name} @ ${ce.org} (${ce.stage}): ${ce.error}\n`);
   if (result.deferred.skippedCycles.length > 0) {
     process.stderr.write(`DEFERRED (budget): ${result.deferred.skippedCycles.join(", ")}\n`);
+  }
+
+  if (args.driftIssue) {
+    const observedAt = new Date().toISOString();
+    const runUrl = driftIssueRunUrl();
+    try {
+      const kept = await keepGovernanceDriftIssue(driftIssueForge({ baseUrl, repo: issueRepo!, token, tokenEnv: args.tokenEnv!, runUrl }), {
+        environment: driftIssueEnvironment(baseUrl, Object.keys(config.orgs)),
+        records: governanceDrift({ member: member!, observedAt, policy: config, changeSets: result.changeSets, errored: result.errored, deferred: result.deferred }).records,
+        observedAt,
+        runUrl,
+      });
+      process.stdout.write(`\n${describeDriftIssue(kept)}\n`);
+    } catch (err) {
+      die(3, `keeping the drift issue failed: ${errMsg(err)}`);
+    }
   }
 
   if (result.cycles.some((cr) => cr.guardrailBlocked)) process.exit(1);
@@ -407,7 +474,9 @@ function printUsage(): void {
       "  --removal-cap-fraction <f>    Removal-cap threshold, a number in (0,1] (default 0.25).",
       "  --allow-guardrail-override    Apply even when guardrails trip.",
       "  --plan-json <file>            Write the plan as a chant change-set part (dry-run only).",
-      "  --member <name>               Member the part names (default: the policy file's directory name).",
+      "  --member <name>               Member the part and drift records name (default: the policy file's directory name).",
+      "  --drift-issue                 Keep one forge issue tracking the drift this dry run finds (dry-run only).",
+      "  --drift-issue-repo <owner/name>  Repository the issue lives in (default: FORGEJO_REPOSITORY, else GITHUB_REPOSITORY).",
       "",
       "repos writes the policy's org's repository list, archived repos included, as",
       "the JSON `chant workspace check --forge-repos <file>` reads.",
